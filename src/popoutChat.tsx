@@ -14,7 +14,7 @@ import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
 import { findComponentByCodeLazy, findLazy } from "@webpack";
-import { ChannelStore, GuildStore, MessageActions, MessageStore, PopoutActions, PopoutWindowStore, React, useStateFromStores } from "@webpack/common";
+import { ChannelRouter, ChannelStore, GuildStore, MessageActions, MessageStore, PopoutActions, PopoutWindowStore, React, useStateFromStores } from "@webpack/common";
 
 import { describe } from "./chats";
 import { POPOUT_KEY } from "./constants";
@@ -107,7 +107,7 @@ html, body { background: transparent !important; }
     display: flex;
     flex: none;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     height: 36px;
     padding: 0 6px 0 14px;
     color: var(--header-primary, #f2f3f5);
@@ -120,7 +120,11 @@ html, body { background: transparent !important; }
 }
 .fc-header.fc-dragging { cursor: grabbing; }
 .fc-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-close {
+.fc-button {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
     width: 26px;
     height: 26px;
     border: none;
@@ -130,8 +134,26 @@ html, body { background: transparent !important; }
     font-size: 15px;
     cursor: pointer;
 }
-.fc-close:hover { background: rgb(255 255 255 / 8%); color: var(--interactive-hover, #fff); }
+.fc-button:hover { background: rgb(255 255 255 / 8%); color: var(--interactive-hover, #fff); }
 `;
+}
+
+/** Открыть канал в основном окне Discord и вывести его на передний план (чат в попауте закрывается). */
+export function openInDiscord(channelId: string) {
+    closeChatPopout();
+    ChannelRouter.transitionToChannel(channelId);
+    Native.focusDiscord().catch(e => logger.error("Failed to focus the Discord window", e));
+}
+
+/** Иконка «открыть во внешнем окне» (стрелка из квадрата). */
+function OpenIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 4h6v6" />
+            <path d="M20 4l-9 9" />
+            <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+        </svg>
+    );
 }
 
 function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initialChannelId: string; }) {
@@ -211,7 +233,10 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
                     onLostPointerCapture={endDrag}
                 >
                     <span className="fc-title">{title}</span>
-                    <button className="fc-close" title="Close" onClick={closeChatPopout}>✕</button>
+                    <button className="fc-button" title="Open in Discord" onClick={() => openInDiscord(channelId)}>
+                        <OpenIcon />
+                    </button>
+                    <button className="fc-button" title="Close" onClick={closeChatPopout}>✕</button>
                 </div>
                 {channel && <ChannelChat key={channelId} channel={channel} guild={guild} chatInputType={ChatInputTypes.SIDEBAR} />}
             </div>

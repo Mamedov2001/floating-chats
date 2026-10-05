@@ -114,7 +114,13 @@
 
     /** Элемент плитки: сама плитка + подпись под ней (имя / #канал и сервер). */
     function createTile(channelId) {
-        const item = el("div", "tile-item");
+        // entering — анимация появления; снимаем по окончании, иначе она повторялась бы
+        // при каждой перестановке узлов (replaceChildren вставляет их заново).
+        const item = el("div", "tile-item entering");
+        const entered = () => item.classList.remove("entering");
+        item.addEventListener("animationend", entered, { once: true });
+        // Запасной вариант: в скрытом окне анимации не проигрываются и animationend не приходит.
+        setTimeout(entered, 400);
         const tileEl = el("div", "tile");
         const initials = el("div", "initials");
         initials.style.background = colorFor(channelId);

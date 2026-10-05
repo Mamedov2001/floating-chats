@@ -43,6 +43,8 @@ export type Orientation = "horizontal" | "vertical";
 export interface OverlayState {
     orientation: Orientation;
     showLabels: boolean;
+    /** Прятать виджет, пока активно основное окно Discord. */
+    hideWhenDiscordFocused: boolean;
     tiles: ChatTile[];
     /** Чат, открытый сейчас в попауте, — его плитка подсвечена. */
     activeChannelId: string | null;

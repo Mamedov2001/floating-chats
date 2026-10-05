@@ -51,6 +51,12 @@ export const settings = definePluginSettings({
         default: true,
         onChange: refresh,
     },
+    hideWhenDiscordFocused: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the widget while the Discord window is focused",
+        default: false,
+        onChange: refresh,
+    },
     orientation: {
         type: OptionType.SELECT,
         description: "Tile layout",

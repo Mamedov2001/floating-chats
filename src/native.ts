@@ -27,7 +27,7 @@ const MAX_QUEUE = 100;
 const TILE_MENU_ACTIONS = new Set<TileMenuAction>(["markRead", "openInDiscord", "remove"]);
 
 let win: BrowserWindow | null = null;
-const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null };
+const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, hideWhenDiscordFocused: false, tiles: [], activeChannelId: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
 
@@ -161,11 +161,32 @@ function onMoved() {
     log("widget moved", anchor);
 }
 
+/** Основное окно Discord (отправитель initOverlay) — для настройки «прятать, пока Discord активен». */
+let discordWin: BrowserWindow | null = null;
+
+function watchDiscordWindow(e: IpcMainInvokeEvent) {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w || w === discordWin) return;
+    unwatchDiscordWindow();
+    discordWin = w;
+    w.on("focus", updateVisibility);
+    w.on("blur", updateVisibility);
+}
+
+function unwatchDiscordWindow() {
+    if (discordWin && !discordWin.isDestroyed()) {
+        discordWin.removeListener("focus", updateVisibility);
+        discordWin.removeListener("blur", updateVisibility);
+    }
+    discordWin = null;
+}
+
 function updateVisibility() {
     if (!alive(win)) return;
 
-    if (!state.tiles.length) {
-        win.hide();
+    const discordFocused = !!discordWin && !discordWin.isDestroyed() && discordWin.isFocused();
+    if (!state.tiles.length || (state.hideWhenDiscordFocused && discordFocused)) {
+        if (win.isVisible()) win.hide();
     } else if (contentSize && !win.isVisible()) {
         // showInactive — показать, не забирая фокус у текущего окна (браузера, IDE).
         win.showInactive();
@@ -291,7 +312,8 @@ function createWindow() {
 
 const displayEvents = ["display-metrics-changed", "display-added", "display-removed"] as const;
 
-export function initOverlay(_e: IpcMainInvokeEvent) {
+export function initOverlay(e: IpcMainInvokeEvent) {
+    watchDiscordWindow(e);
     if (alive(win)) {
         // Renderer перезагрузился (Ctrl+R), а окно осталось — просто переотправим состояние.
         pushState();
@@ -315,6 +337,7 @@ export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
     state = {
         orientation: next?.orientation === "vertical" ? "vertical" : "horizontal",
         showLabels: next?.showLabels !== false,
+        hideWhenDiscordFocused: next?.hideWhenDiscordFocused === true,
         tiles: Array.isArray(next?.tiles) ? next.tiles : [],
         activeChannelId: next?.activeChannelId ?? null,
     };
@@ -333,6 +356,7 @@ export function nextEvent(_e: IpcMainInvokeEvent): Promise<OverlayEvent | null> 
 }
 
 export function disposeOverlay(_e: IpcMainInvokeEvent) {
+    unwatchDiscordWindow();
     ipcMain.removeListener(ACTION_CHANNEL, onAction);
     for (const ev of displayEvents) screen.removeListener(ev as any, applyBounds);
 

@@ -1,10 +1,10 @@
 import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
-import { ChannelRouter, ReadStateStore, UserStore } from "@webpack/common";
+import { ReadStateStore, UserStore } from "@webpack/common";
 
 import { buildTiles, clearChats, clearReactions, exportChats, handleMessage, handleReaction, importChats, markRead, removeChat, seedFromUnread } from "./chats";
-import { closeChatPopout, openChatPopout, resetHistoryRequests, resetPopoutPosition } from "./popoutChat";
+import { closeChatPopout, openChatPopout, openInDiscord, resetHistoryRequests, resetPopoutPosition } from "./popoutChat";
 import { onResetPositions, onTilesSettingChanged, settings } from "./settings";
 import type { MessageCreateEvent, OverlayEvent, OverlayState, ReactionAddEvent, TileMenuAction } from "./types";
 
@@ -63,6 +63,7 @@ function pushState() {
     const state: OverlayState = {
         orientation: settings.store.orientation === "vertical" ? "vertical" : "horizontal",
         showLabels: settings.store.showLabels,
+        hideWhenDiscordFocused: settings.store.hideWhenDiscordFocused,
         tiles,
         activeChannelId: openChannelId,
     };
@@ -114,9 +115,7 @@ function onTileMenu(channelId: string, action: TileMenuAction) {
             removeChat(channelId);
             break;
         case "openInDiscord":
-            if (openChannelId === channelId) closeChatPopout();
-            ChannelRouter.transitionToChannel(channelId);
-            Native.focusDiscord().catch(e => logger.error("Failed to focus the Discord window", e));
+            openInDiscord(channelId);
             break;
     }
     scheduleRefresh();

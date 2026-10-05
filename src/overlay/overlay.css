@@ -100,6 +100,17 @@ body.vertical .grip svg {
     cursor: pointer;
 }
 
+.tile-item.entering {
+    animation: tile-enter 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+
+@keyframes tile-enter {
+    from {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+}
+
 /* С подписями элемент шире плитки — в ряду компенсируем это меньшим промежутком. */
 body.labels .tile-item {
     width: calc(var(--tile-size) + 16px);
