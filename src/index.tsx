@@ -97,7 +97,13 @@ function onTileClick(channelId: string) {
         if (openChannelId) markRead(openChannelId);
         openChannelId = null;
         scheduleRefresh();
-    }).catch(e => {
+    }).then(opened => {
+        // Попаут недоступен (Discord обновился) — чат открыт в основном окне Discord.
+        if (!opened && openChannelId === channelId) {
+            openChannelId = null;
+            scheduleRefresh();
+        }
+    }, e => {
         logger.error("Failed to open the chat", e);
         openChannelId = null;
         scheduleRefresh();

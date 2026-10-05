@@ -357,6 +357,8 @@ export function nextEvent(_e: IpcMainInvokeEvent): Promise<OverlayEvent | null> 
 
 export function disposeOverlay(_e: IpcMainInvokeEvent) {
     unwatchDiscordWindow();
+    drag = null;
+    popoutDrag = null;
     ipcMain.removeListener(ACTION_CHANNEL, onAction);
     for (const ev of displayEvents) screen.removeListener(ev as any, applyBounds);
 

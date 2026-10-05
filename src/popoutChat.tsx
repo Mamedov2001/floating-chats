@@ -11,9 +11,11 @@
 //    использует chatInputType = ChatInputTypes.SIDEBAR. Историю он не грузит — это делает вызывающий.
 
 import * as DataStore from "@api/DataStore";
+import { showNotification } from "@api/Notifications";
+import ErrorBoundary from "@components/ErrorBoundary";
 import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
-import { findComponentByCodeLazy, findLazy } from "@webpack";
+import { filters, find } from "@webpack";
 import { ChannelRouter, ChannelStore, GuildStore, MessageActions, MessageStore, PopoutActions, PopoutWindowStore, React, useStateFromStores } from "@webpack/common";
 
 import { describe } from "./chats";
@@ -23,15 +25,78 @@ import { settings } from "./settings";
 const logger = new Logger("FloatingChats");
 const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("./native")>;
 
-const PopoutWindow = findComponentByCodeLazy("Missing guestWindow reference");
-const ChannelChat = findComponentByCodeLazy('location:"ChannelChat"');
-const ChatInputTypes = findLazy(m => m?.SIDEBAR?.analyticsName === "sidebar");
-/** CSS-класс обёртки чата в боковой панели Discord: модуль, экспортирующий единственный класс chat_<hash>. */
-const sidebarChatCss = findLazy(m => {
-    if (!m || typeof m !== "object") return false;
-    const values = Object.values(m);
-    return values.length === 1 && typeof values[0] === "string" && /^chat_[0-9a-f]+$/.test(values[0]);
-});
+// ---------- Внутренние части Discord ----------
+//
+// Ищутся по устойчивым строкам кода. После обновления Discord что-то может не найтись — тогда чат
+// открывается в основном окне Discord, а пользователь один раз за сессию получает уведомление.
+
+interface DiscordParts {
+    PopoutWindow: React.ComponentType<any>;
+    ChannelChat: React.ComponentType<any>;
+    /** ChatInputTypes.SIDEBAR — режим ввода для канала, не открытого в основном окне. */
+    sidebarInputType: unknown;
+    /** CSS-класс обёртки чата в боковой панели; не критичен (есть инлайн-стили). */
+    chatClassName: string;
+}
+
+let parts: DiscordParts | null = null;
+let missingReported = false;
+
+/** Найти нужные части Discord (один раз). Возвращает список того, что найти не удалось. */
+export function resolveDiscordParts(): string[] {
+    if (parts) return [];
+
+    const PopoutWindow = find(filters.componentByCode("Missing guestWindow reference"), { isIndirect: true });
+    const ChannelChat = find(filters.componentByCode('location:"ChannelChat"'), { isIndirect: true });
+    const inputTypes = find(m => m?.SIDEBAR?.analyticsName === "sidebar", { isIndirect: true });
+    // Модуль, экспортирующий единственный класс chat_<hash>, — обёртка чата в боковой панели.
+    const chatCss = find(m => {
+        if (!m || typeof m !== "object") return false;
+        const values = Object.values(m);
+        return values.length === 1 && typeof values[0] === "string" && /^chat_[0-9a-f]+$/.test(values[0]);
+    }, { isIndirect: true, topLevelOnly: true });
+
+    let popoutOpen: unknown;
+    try { popoutOpen = PopoutActions.open; } catch { }
+
+    const missing: string[] = [];
+    if (!PopoutWindow) missing.push("PopoutWindow");
+    if (!ChannelChat) missing.push("ChannelChat");
+    if (!inputTypes) missing.push("ChatInputTypes.SIDEBAR");
+    if (typeof popoutOpen !== "function") missing.push("PopoutActions.open");
+    if (missing.length) return missing;
+
+    if (!chatCss) logger.warn("Sidebar chat CSS class not found — the chat may look slightly off");
+    parts = {
+        PopoutWindow,
+        ChannelChat,
+        sidebarInputType: inputTypes.SIDEBAR,
+        chatClassName: chatCss ? Object.values(chatCss)[0] as string : "",
+    };
+    return [];
+}
+
+function reportMissing(missing: string[]) {
+    logger.error(`Discord internals not found: ${missing.join(", ")}. Discord was probably updated — `
+        + "chats will open in the main Discord window until the plugin is updated.");
+    if (missingReported) return;
+    missingReported = true;
+    showNotification({
+        title: "FloatingChats",
+        body: "Discord was updated and the floating chat window can't be shown. "
+            + "Chats will open in the main Discord window until the plugin is updated.",
+    });
+}
+
+/** Чат упал при отрисовке — вместо пустого окна сообщение и выход в основное окно Discord. */
+function ChatCrashed({ channelId }: { channelId: string; }) {
+    return (
+        <div className="fc-crashed">
+            <div>This chat can't be shown here.</div>
+            <button className="fc-crashed-button" onClick={() => openInDiscord(channelId)}>Open in Discord</button>
+        </div>
+    );
+}
 
 const WIDTH = 400;
 const HEIGHT = 640;
@@ -135,6 +200,25 @@ html, body { background: transparent !important; }
     cursor: pointer;
 }
 .fc-button:hover { background: rgb(255 255 255 / 8%); color: var(--interactive-hover, #fff); }
+.fc-crashed {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--text-muted, #949ba4);
+    font-size: 14px;
+}
+.fc-crashed-button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    background: var(--brand-500, #5865f2);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+}
 `;
 }
 
@@ -157,6 +241,7 @@ function OpenIcon() {
 }
 
 function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initialChannelId: string; }) {
+    const { PopoutWindow, ChannelChat, sidebarInputType, chatClassName } = parts!;
     const [channelId, setChannelId] = React.useState(initialChannelId);
     React.useEffect(() => {
         switchChannel = setChannelId;
@@ -221,7 +306,7 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
         <PopoutWindow windowKey={windowKey} withTitleBar={false} title={title || "Floating Chats"} onBlur={onBlur}>
             <div
                 ref={rootRef}
-                className={Object.values(sidebarChatCss)[0] as string}
+                className={chatClassName}
                 style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", width: "100%", height: "100%", minWidth: 0, minHeight: 0 }}
             >
                 <div
@@ -238,7 +323,11 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
                     </button>
                     <button className="fc-button" title="Close" onClick={closeChatPopout}>✕</button>
                 </div>
-                {channel && <ChannelChat key={channelId} channel={channel} guild={guild} chatInputType={ChatInputTypes.SIDEBAR} />}
+                {channel && (
+                    <ErrorBoundary key={channelId} fallback={() => <ChatCrashed channelId={channelId} />}>
+                        <ChannelChat channel={channel} guild={guild} chatInputType={sidebarInputType} />
+                    </ErrorBoundary>
+                )}
             </div>
         </PopoutWindow>
     );
@@ -274,8 +363,18 @@ async function popoutPosition() {
     return { x: Math.round(x), y: Math.round(y) };
 }
 
-/** Открыть (или переключить) попаут с чатом канала. onClose — когда окно закрылось. */
-export async function openChatPopout(channelId: string, onClose: () => void) {
+/**
+ * Открыть (или переключить) попаут с чатом канала. onClose — когда окно закрылось.
+ * Возвращает false, если попаут показать нельзя (части Discord не найдены) — тогда чат открыт в Discord.
+ */
+export async function openChatPopout(channelId: string, onClose: () => void): Promise<boolean> {
+    const missing = resolveDiscordParts();
+    if (missing.length) {
+        reportMissing(missing);
+        openInDiscord(channelId);
+        return false;
+    }
+
     clearTimeout(blurTimer);
     onClosed = onClose;
     ensureHistory(channelId);
@@ -284,7 +383,7 @@ export async function openChatPopout(channelId: string, onClose: () => void) {
         switchChannel(channelId);
         // Фокус ушёл на виджет при клике — вернуть его попауту, чтобы клик мимо снова его закрывал.
         popoutWindow()?.focus();
-        return;
+        return true;
     }
 
     isOpen = true;
@@ -303,4 +402,5 @@ export async function openChatPopout(channelId: string, onClose: () => void) {
             skipTaskbar: true,
         }
     );
+    return true;
 }
