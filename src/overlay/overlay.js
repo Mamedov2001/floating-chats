@@ -77,7 +77,7 @@
     // Ручка для перетаскивания виджета. Двигаем окно сами (через main): системный drag-region
     // не работает у неперемещаемого окна и не показывает курсор-руку.
     const grip = el("div", "grip");
-    grip.title = "Перетащите, чтобы переместить";
+    grip.title = "Drag to move";
     grip.append(gripIcon());
     let dragging = false;
 
@@ -125,6 +125,10 @@
 
         item.append(tileEl, label);
         item.addEventListener("click", () => api.send({ type: "tileClick", channelId }));
+        item.addEventListener("contextmenu", e => {
+            e.preventDefault();
+            openMenu(channelId, item);
+        });
         return item;
     }
 
@@ -157,9 +161,64 @@
             return tileEl;
         });
         for (const id of tileEls.keys()) if (!seen.has(id)) tileEls.delete(id);
+        if (menuChannel && !seen.has(menuChannel)) closeMenu();
         // Перестановка существующих узлов не перезагружает картинки. Ручка — в дальнем от угла конце.
         tilesEl.replaceChildren(...els, grip);
     }
+
+    // ---------- Меню по правому клику ----------
+
+    // Меню — часть #root (а не всплывающий слой): так окно виджета на время меню вырастает под него.
+    const menu = el("div", "menu");
+    menu.hidden = true;
+    root.append(menu);
+    let menuChannel = null;
+
+    function menuItem(text, action, { danger = false, disabled = false } = {}) {
+        const item = el("div", "menu-item", text);
+        if (danger) item.classList.add("danger");
+        if (disabled) item.classList.add("disabled");
+        else item.addEventListener("click", () => {
+            api.send({ type: "tileMenu", channelId: menuChannel, action });
+            closeMenu();
+        });
+        return item;
+    }
+
+    function openMenu(channelId, tileItem) {
+        const tile = state.tiles.find(t => t.channelId === channelId);
+        if (!tile) return;
+        menuChannel = channelId;
+        menu.replaceChildren(
+            menuItem("Mark as read", "markRead", { disabled: !(tile.unread > 0) }),
+            menuItem("Open in Discord", "openInDiscord"),
+            el("div", "menu-separator"),
+            menuItem("Remove from list", "remove", { danger: true }),
+        );
+        menu.hidden = false;
+
+        // Выровнять меню по плитке: горизонтально — под ней правым краем, вертикально — слева, верхним краем.
+        menu.style.marginRight = menu.style.marginTop = "0px";
+        const pad = parseFloat(getComputedStyle(root).paddingTop) || 0;
+        const r = root.getBoundingClientRect(), t = tileItem.getBoundingClientRect();
+        if (state.orientation === "vertical") menu.style.marginTop = `${Math.max(0, t.top - r.top - pad)}px`;
+        else menu.style.marginRight = `${Math.max(0, r.right - pad - t.right)}px`;
+    }
+
+    function closeMenu() {
+        if (menu.hidden) return;
+        menu.hidden = true;
+        menuChannel = null;
+    }
+
+    // Закрыть: клик мимо меню, Esc, уход фокуса из окна виджета.
+    document.addEventListener("pointerdown", e => {
+        if (!menu.contains(e.target)) closeMenu();
+    }, true);
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape") closeMenu();
+    });
+    window.addEventListener("blur", closeMenu);
 
     // ---------- Размер окна ----------
 

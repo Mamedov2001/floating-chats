@@ -164,6 +164,7 @@ export function markRead(channelId: string) {
 
 export function removeChat(channelId: string) {
     recent.delete(channelId);
+    reactions.delete(channelId);
 }
 
 export function clearChats() {
@@ -190,21 +191,21 @@ function makeInitials(name: string) {
 }
 
 function userName(userId: string, user: User | undefined) {
-    return RelationshipStore.getNickname(userId) || user?.globalName || user?.username || "Неизвестный";
+    return RelationshipStore.getNickname(userId) || user?.globalName || user?.username || "Unknown user";
 }
 
 export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "initials" | "name" | "context"> {
     if (channel.type === ChannelType.DM) {
         const userId = channel.getRecipientId() ?? channel.recipients?.[0];
         const user = userId ? UserStore.getUser(userId) : undefined;
-        const title = userId ? userName(userId, user) : (channel.name || "ЛС");
+        const title = userId ? userName(userId, user) : (channel.name || "Direct message");
         return { title, name: title, avatarUrl: userId ? userAvatarUrl(userId, user) : undefined, initials: makeInitials(title) };
     }
 
     if (channel.type === ChannelType.GROUP_DM) {
         const title = channel.name
             || channel.recipients.map(id => userName(id, UserStore.getUser(id))).join(", ")
-            || "Группа";
+            || "Group";
         return {
             title,
             name: title,
@@ -214,7 +215,7 @@ export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl"
     }
 
     const guild = GuildStore.getGuild(channel.guild_id);
-    const guildName = guild?.name ?? "Сервер";
+    const guildName = guild?.name ?? "Server";
     return {
         title: `#${channel.name} · ${guildName}`,
         name: `#${channel.name}`,

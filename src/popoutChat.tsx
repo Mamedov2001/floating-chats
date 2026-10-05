@@ -55,13 +55,13 @@ function ensureHistory(channelId: string) {
     historyRequested.add(channelId);
 
     if (typeof MessageActions?.fetchMessages !== "function") {
-        logger.warn("MessageActions.fetchMessages не найден — история не будет подгружена");
+        logger.warn("MessageActions.fetchMessages not found — chat history will not be loaded");
         return;
     }
     try {
         MessageActions.fetchMessages({ channelId, limit: HISTORY_LIMIT });
     } catch (e) {
-        logger.error("Не удалось загрузить историю", channelId, e);
+        logger.error("Failed to load chat history", channelId, e);
     }
 }
 
@@ -211,7 +211,7 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
                     onLostPointerCapture={endDrag}
                 >
                     <span className="fc-title">{title}</span>
-                    <button className="fc-close" title="Закрыть" onClick={closeChatPopout}>✕</button>
+                    <button className="fc-close" title="Close" onClick={closeChatPopout}>✕</button>
                 </div>
                 {channel && <ChannelChat key={channelId} channel={channel} guild={guild} chatInputType={ChatInputTypes.SIDEBAR} />}
             </div>

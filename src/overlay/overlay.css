@@ -23,7 +23,16 @@ body {
 
 #root {
     display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
     padding: var(--pad);
+}
+
+/* Вертикально: столбик плиток справа, меню — слева от него. */
+body.vertical #root {
+    flex-direction: row-reverse;
+    align-items: flex-start;
 }
 
 #tiles {
@@ -208,4 +217,61 @@ body.labels:not(.vertical) #tiles {
     font-weight: 700;
     line-height: 12px;
     text-align: center;
+}
+
+/* ---------- Меню по правому клику (в стиле контекстного меню Discord) ---------- */
+
+.menu {
+    display: flex;
+    flex-direction: column;
+    min-width: 188px;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: #111214;
+    box-shadow: 0 8px 16px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 255 255 / 4%);
+}
+
+.menu[hidden] {
+    display: none;
+}
+
+.menu-item {
+    padding: 7px 8px;
+    border-radius: 4px;
+    color: #b5bac1;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    cursor: pointer;
+}
+
+.menu-item:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.menu-item.danger {
+    color: var(--red);
+}
+
+.menu-item.danger:hover {
+    background: #da373c;
+    color: #fff;
+}
+
+.menu-item.disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.menu-item.disabled:hover {
+    background: none;
+    color: #b5bac1;
+}
+
+.menu-separator {
+    height: 1px;
+    margin: 4px 4px;
+    background: rgb(255 255 255 / 6%);
 }

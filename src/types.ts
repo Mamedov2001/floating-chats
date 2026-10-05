@@ -48,10 +48,14 @@ export interface OverlayState {
     activeChannelId: string | null;
 }
 
+/** Пункты меню по правому клику на плитке. */
+export type TileMenuAction = "markRead" | "openInDiscord" | "remove";
+
 /** Действия из оверлея в main (через preload). */
 export type OverlayAction =
     | { type: "layout"; width: number; height: number; }
     | { type: "tileClick"; channelId: string; }
+    | { type: "tileMenu"; channelId: string; action: TileMenuAction; }
     /** Перетаскивание виджета за ручку: экранные координаты курсора. */
     | { type: "dragStart"; x: number; y: number; }
     | { type: "dragMove"; x: number; y: number; }
@@ -59,7 +63,8 @@ export type OverlayAction =
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =
-    | { type: "tileClick"; channelId: string; };
+    | { type: "tileClick"; channelId: string; }
+    | { type: "tileMenu"; channelId: string; action: TileMenuAction; };
 
 /** Flux-событие MESSAGE_REACTION_ADD (поля как их кладёт Discord из гейтвея). */
 export interface ReactionAddEvent {

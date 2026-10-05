@@ -1,12 +1,12 @@
 import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
-import { ReadStateStore, UserStore } from "@webpack/common";
+import { ChannelRouter, ReadStateStore, UserStore } from "@webpack/common";
 
-import { buildTiles, clearChats, clearReactions, exportChats, handleMessage, handleReaction, importChats, markRead, seedFromUnread } from "./chats";
+import { buildTiles, clearChats, clearReactions, exportChats, handleMessage, handleReaction, importChats, markRead, removeChat, seedFromUnread } from "./chats";
 import { closeChatPopout, openChatPopout, resetHistoryRequests, resetPopoutPosition } from "./popoutChat";
 import { onResetPositions, onTilesSettingChanged, settings } from "./settings";
-import type { MessageCreateEvent, OverlayEvent, OverlayState, ReactionAddEvent } from "./types";
+import type { MessageCreateEvent, OverlayEvent, OverlayState, ReactionAddEvent, TileMenuAction } from "./types";
 
 const logger = new Logger("FloatingChats", "#5865f2");
 const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("./native")>;
@@ -50,7 +50,7 @@ function saveChats() {
     if (snapshot === lastSaved) return;
     lastSaved = snapshot;
     DataStore.set(storeKey, exportChats())
-        .catch(e => logger.error("Не удалось сохранить список чатов", e));
+        .catch(e => logger.error("Failed to save the chat list", e));
 }
 
 function pushState() {
@@ -71,7 +71,7 @@ function pushState() {
     lastSent = payload;
 
     Native.setOverlayState(state)
-        .catch(e => logger.error("Не удалось обновить оверлей", e));
+        .catch(e => logger.error("Failed to update the overlay", e));
 }
 
 /** Отложенное обновление: сторы Discord обрабатывают событие раньше или позже нас — дадим им закончить. */
@@ -97,10 +97,28 @@ function onTileClick(channelId: string) {
         openChannelId = null;
         scheduleRefresh();
     }).catch(e => {
-        logger.error("Не удалось открыть чат", e);
+        logger.error("Failed to open the chat", e);
         openChannelId = null;
         scheduleRefresh();
     });
+    scheduleRefresh();
+}
+
+function onTileMenu(channelId: string, action: TileMenuAction) {
+    switch (action) {
+        case "markRead":
+            markRead(channelId);
+            break;
+        case "remove":
+            if (openChannelId === channelId) closeChatPopout();
+            removeChat(channelId);
+            break;
+        case "openInDiscord":
+            if (openChannelId === channelId) closeChatPopout();
+            ChannelRouter.transitionToChannel(channelId);
+            Native.focusDiscord().catch(e => logger.error("Failed to focus the Discord window", e));
+            break;
+    }
     scheduleRefresh();
 }
 
@@ -108,6 +126,9 @@ function handleOverlayEvent(ev: OverlayEvent) {
     switch (ev.type) {
         case "tileClick":
             onTileClick(ev.channelId);
+            break;
+        case "tileMenu":
+            onTileMenu(ev.channelId, ev.action);
             break;
     }
 }
@@ -118,7 +139,7 @@ async function pollOverlayEvents(generation: number) {
         try {
             ev = await Native.nextEvent();
         } catch (e) {
-            logger.error("nextEvent упал, останавливаю опрос", e);
+            logger.error("nextEvent failed, stopping the event loop", e);
             return;
         }
         if (generation !== pollGeneration) return;
@@ -126,7 +147,7 @@ async function pollOverlayEvents(generation: number) {
             try {
                 handleOverlayEvent(ev);
             } catch (e) {
-                logger.error("Ошибка обработки события оверлея", ev, e);
+                logger.error("Failed to handle an overlay event", ev, e);
             }
         }
     }
@@ -142,14 +163,14 @@ export default definePlugin({
         MESSAGE_CREATE({ message, optimistic }: MessageCreateEvent) {
             if (optimistic || !running) return;
             if (handleMessage(message)) {
-                logger.info("Плитка обновлена:", message.channel_id);
+                logger.info("Tile updated:", message.channel_id);
                 scheduleRefresh();
             }
         },
         MESSAGE_REACTION_ADD(ev: ReactionAddEvent) {
             if (!running) return;
             if (handleReaction(ev)) {
-                logger.info("Реакция на моё сообщение:", ev.channelId);
+                logger.info("Reaction to my message:", ev.channelId);
                 scheduleRefresh();
             }
         },
@@ -159,7 +180,7 @@ export default definePlugin({
         },
         // Данные Discord (каналы, непрочитанное) загружены — после старта или переподключения.
         CONNECTION_OPEN() {
-            restoreChats().catch(e => logger.error("Не удалось восстановить список чатов", e));
+            restoreChats().catch(e => logger.error("Failed to restore the chat list", e));
         },
     },
 
@@ -168,8 +189,8 @@ export default definePlugin({
         lastSent = "";
         onTilesSettingChanged.fn = scheduleRefresh;
         onResetPositions.fn = () => {
-            Native.resetWidgetPosition().catch(e => logger.error("Не удалось сбросить позицию виджета", e));
-            resetPopoutPosition().catch(e => logger.error("Не удалось сбросить позицию чата", e));
+            Native.resetWidgetPosition().catch(e => logger.error("Failed to reset the widget position", e));
+            resetPopoutPosition().catch(e => logger.error("Failed to reset the chat position", e));
         };
         ReadStateStore.addChangeListener(scheduleRefresh);
 
@@ -177,7 +198,7 @@ export default definePlugin({
         await restoreChats();
         pushState();
         pollOverlayEvents(++pollGeneration);
-        logger.info("Плагин запущен");
+        logger.info("Plugin started");
     },
 
     stop() {
@@ -194,6 +215,6 @@ export default definePlugin({
         lastSaved = "";
         resetHistoryRequests();
         Native.disposeOverlay();
-        logger.info("Плагин остановлен");
+        logger.info("Plugin stopped");
     },
 });

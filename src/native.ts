@@ -12,7 +12,7 @@ import rawOverlayJs from "file://overlay/overlay.js?minify";
 import preloadJs from "file://overlay/preload.js";
 
 import { POPOUT_KEY } from "./constants";
-import type { OverlayAction, OverlayEvent, OverlayState } from "./types";
+import type { OverlayAction, OverlayEvent, OverlayState, TileMenuAction } from "./types";
 
 const UPDATE_CHANNEL = "floating-chats:update";
 const ACTION_CHANNEL = "floating-chats:action";
@@ -24,6 +24,7 @@ const MARGIN_TOP = 12;
 const PAD = 6;
 const MAX_SIZE = 2000;
 const MAX_QUEUE = 100;
+const TILE_MENU_ACTIONS = new Set<TileMenuAction>(["markRead", "openInDiscord", "remove"]);
 
 let win: BrowserWindow | null = null;
 const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null };
@@ -207,6 +208,10 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
         }
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
+            break;
+        case "tileMenu":
+            if (typeof action.channelId === "string" && TILE_MENU_ACTIONS.has(action.action))
+                pushEvent({ type: "tileMenu", channelId: action.channelId, action: action.action });
             break;
         case "dragStart": {
             if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
@@ -393,4 +398,13 @@ export function popoutDragEnd(_e: IpcMainInvokeEvent) {
     if (!w) return null;
     const { x, y } = w.getBounds();
     return { x, y };
+}
+
+/** Вывести основное окно Discord на передний план (оно — отправитель IPC-вызова из renderer). */
+export function focusDiscord(e: IpcMainInvokeEvent) {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w || w.isDestroyed()) return;
+    if (w.isMinimized()) w.restore();
+    w.show();
+    w.focus();
 }
