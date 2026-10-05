@@ -11,6 +11,7 @@ import rawOverlayCss from "file://overlay/overlay.css";
 import rawOverlayJs from "file://overlay/overlay.js?minify";
 import preloadJs from "file://overlay/preload.js";
 
+import { POPOUT_KEY } from "./constants";
 import type { OverlayAction, OverlayEvent, OverlayState } from "./types";
 
 const UPDATE_CHANNEL = "floating-chats:update";
@@ -137,6 +138,19 @@ function applyBounds() {
     win.setBounds(boundsFor(contentSize));
 }
 
+/**
+ * Позиция прямоугольника w×h, целиком лежащего в рабочей области монитора.
+ * Монитор выбирается по точке (по умолчанию — центр прямоугольника; при перетаскивании — курсор),
+ * так что окно можно перенести на другой монитор, но не за его край.
+ */
+function clampToDisplay(x: number, y: number, w: number, h: number, pointX = x + w / 2, pointY = y + h / 2) {
+    const wa = screen.getDisplayNearestPoint({ x: Math.round(pointX), y: Math.round(pointY) }).workArea;
+    return {
+        x: Math.round(Math.min(Math.max(x, wa.x), wa.x + wa.width - w)),
+        y: Math.round(Math.min(Math.max(y, wa.y), wa.y + wa.height - h)),
+    };
+}
+
 /** Виджет перетащили за ручку — запомнить новую точку привязки. */
 function onMoved() {
     if (!alive(win)) return;
@@ -209,10 +223,13 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
             drag = { pointerX: action.x, pointerY: action.y, winX: b.x, winY: b.y };
             break;
         }
-        case "dragMove":
+        case "dragMove": {
             if (!drag || !Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
-            win.setPosition(Math.round(drag.winX + action.x - drag.pointerX), Math.round(drag.winY + action.y - drag.pointerY));
+            const { width, height } = win.getBounds();
+            const p = clampToDisplay(drag.winX + action.x - drag.pointerX, drag.winY + action.y - drag.pointerY, width, height, action.x, action.y);
+            win.setPosition(p.x, p.y);
             break;
+        }
         case "dragEnd":
             if (!drag) return;
             drag = null;
@@ -361,4 +378,42 @@ export function resetWidgetPosition(_e: IpcMainInvokeEvent) {
     saveAnchor();
     applyBounds();
     log("widget position reset");
+}
+
+// ---------- Окно чата (попаут Discord) ----------
+
+function popoutWindow() {
+    return BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && (w as any).windowKey === POPOUT_KEY);
+}
+
+/** Подвинуть точку так, чтобы прямоугольник целиком был на мониторе (для сохранённой позиции чата). */
+export function clampRect(_e: IpcMainInvokeEvent, x: number, y: number, width: number, height: number) {
+    if (![x, y, width, height].every(Number.isFinite)) return null;
+    return clampToDisplay(x, y, width, height);
+}
+
+let popoutDrag: { pointerX: number; pointerY: number; winX: number; winY: number; } | null = null;
+
+export function popoutDragStart(_e: IpcMainInvokeEvent, x: number, y: number) {
+    const w = popoutWindow();
+    if (!w || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const b = w.getBounds();
+    popoutDrag = { pointerX: x, pointerY: y, winX: b.x, winY: b.y };
+}
+
+export function popoutDragMove(_e: IpcMainInvokeEvent, x: number, y: number) {
+    const w = popoutWindow();
+    if (!w || !popoutDrag || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const { width, height } = w.getBounds();
+    const p = clampToDisplay(popoutDrag.winX + x - popoutDrag.pointerX, popoutDrag.winY + y - popoutDrag.pointerY, width, height, x, y);
+    w.setPosition(p.x, p.y);
+}
+
+/** Конец перетаскивания чата; возвращает итоговую позицию, чтобы renderer её запомнил. */
+export function popoutDragEnd(_e: IpcMainInvokeEvent) {
+    popoutDrag = null;
+    const w = popoutWindow();
+    if (!w) return null;
+    const { x, y } = w.getBounds();
+    return { x, y };
 }

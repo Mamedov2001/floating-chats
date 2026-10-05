@@ -50,28 +50,46 @@ body.vertical #tiles {
     flex-direction: column;
 }
 
+/* Ручка перетаскивания: «таблетка» в стиле плиток с иконкой из точек. */
 .grip {
+    display: flex;
     flex: none;
-    align-self: center;
-    width: 10px;
-    height: 36px;
-    border-radius: 5px;
-    background:
-        radial-gradient(circle, rgb(255 255 255 / 55%) 1.2px, transparent 1.6px) center / 5px 6px,
-        rgb(30 31 34 / 85%);
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: var(--tile-size);
+    border-radius: 9px;
+    background: var(--tile);
+    color: #80848e;
     box-shadow: 0 2px 6px rgb(0 0 0 / 45%);
     cursor: grab;
     touch-action: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.grip:hover,
+.grip.dragging {
+    background: #2b2d31;
+    color: var(--text);
 }
 
 .grip.dragging {
     cursor: grabbing;
 }
 
+.grip svg {
+    pointer-events: none;
+}
+
+/* Вертикально ручка — сверху столбика и лежит горизонтально. */
 body.vertical .grip {
-    width: 36px;
-    height: 10px;
-    background-size: 6px 5px, auto;
+    order: -1;
+    width: var(--tile-size);
+    height: 18px;
+}
+
+body.vertical .grip svg {
+    transform: rotate(90deg);
 }
 
 .tile {

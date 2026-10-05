@@ -64,12 +64,33 @@
 
     // ---------- Плитки ----------
 
+    /** Иконка ручки: 2×3 точки (inline SVG — это DOM, а не загрузка картинки, CSP не мешает). */
+    function gripIcon() {
+        const NS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(NS, "svg");
+        svg.setAttribute("viewBox", "0 0 10 16");
+        svg.setAttribute("width", "10");
+        svg.setAttribute("height", "16");
+        for (const cx of [2.5, 7.5]) {
+            for (const cy of [3, 8, 13]) {
+                const dot = document.createElementNS(NS, "circle");
+                dot.setAttribute("cx", String(cx));
+                dot.setAttribute("cy", String(cy));
+                dot.setAttribute("r", "1.5");
+                dot.setAttribute("fill", "currentColor");
+                svg.append(dot);
+            }
+        }
+        return svg;
+    }
+
     // Плитки живут между обновлениями: пересоздание заставляло бы картинки грузиться заново и мигать.
     const tileEls = new Map();
     // Ручка для перетаскивания виджета. Двигаем окно сами (через main): системный drag-region
     // не работает у неперемещаемого окна и не показывает курсор-руку.
     const grip = el("div", "grip");
     grip.title = "Перетащите, чтобы переместить";
+    grip.append(gripIcon());
     let dragging = false;
 
     grip.addEventListener("pointerdown", e => {

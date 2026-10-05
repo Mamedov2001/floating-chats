@@ -16,6 +16,7 @@ import { ChannelStore, GuildStore, PopoutActions, PopoutWindowStore, React, useS
 
 import { ensureHistory } from "../chatPanel";
 import { describe } from "../chats";
+import { POPOUT_KEY } from "../constants";
 import { settings } from "../settings";
 
 const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("../native")>;
@@ -30,7 +31,6 @@ const sidebarChatCss = findLazy(m => {
     return values.length === 1 && typeof values[0] === "string" && /^chat_[0-9a-f]+$/.test(values[0]);
 });
 
-export const POPOUT_KEY = "DISCORD_FLOATING_CHATS";
 const WIDTH = 400;
 const HEIGHT = 640;
 const GAP = 8;
@@ -43,8 +43,6 @@ let switchChannel: ((channelId: string) => void) | null = null;
 let onClosed: (() => void) | null = null;
 let isOpen = false;
 let blurTimer: ReturnType<typeof setTimeout> | undefined;
-/** Позиция, куда мы сами поставили окно; если при закрытии оно в другом месте — его передвинули. */
-let placedAt: { x: number; y: number; } | null = null;
 
 function popoutWindow(): Window | undefined {
     const w = PopoutWindowStore?.getWindow(POPOUT_KEY);
@@ -56,11 +54,6 @@ export function closeChatPopout() {
     if (!isOpen) return;
     isOpen = false;
     switchChannel = null;
-
-    const w = popoutWindow();
-    if (w && placedAt && (Math.abs(w.screenX - placedAt.x) > 4 || Math.abs(w.screenY - placedAt.y) > 4))
-        DataStore.set(POSITION_KEY, { x: w.screenX, y: w.screenY });
-
     PopoutActions.close(POPOUT_KEY);
     onClosed?.();
 }
@@ -95,9 +88,11 @@ html, body { background: transparent !important; }
     font-size: 15px;
     font-weight: 600;
     border-bottom: 1px solid rgb(255 255 255 / 6%);
-    cursor: move;
-    -webkit-app-region: drag;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
 }
+.fc-header.fc-dragging { cursor: grabbing; }
 .fc-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-close {
     width: 26px;
@@ -108,7 +103,6 @@ html, body { background: transparent !important; }
     color: var(--interactive-normal, #b5bac1);
     font-size: 15px;
     cursor: pointer;
-    -webkit-app-region: no-drag;
 }
 .fc-close:hover { background: rgb(255 255 255 / 8%); color: var(--interactive-hover, #fff); }
 `;
@@ -145,6 +139,31 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
     const guild = useStateFromStores([GuildStore], () => channel?.guild_id ? GuildStore.getGuild(channel.guild_id) : null, [channel]);
     const title = channel ? describe(channel).title : "";
 
+    // Перетаскивание за шапку — вручную через main: так окно не уедет за край монитора
+    // (системное перетаскивание Windows ограничить нельзя).
+    // Флаг — в ref (обработчики видят его сразу), состояние — только для курсора.
+    const draggingRef = React.useRef(false);
+    const [dragging, setDragging] = React.useState(false);
+    const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+        e.preventDefault();
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+        draggingRef.current = true;
+        setDragging(true);
+        Native.popoutDragStart(e.screenX, e.screenY);
+    };
+    const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (draggingRef.current) Native.popoutDragMove(e.screenX, e.screenY);
+    };
+    const endDrag = () => {
+        if (!draggingRef.current) return;
+        draggingRef.current = false;
+        setDragging(false);
+        Native.popoutDragEnd().then(pos => {
+            if (pos) DataStore.set(POSITION_KEY, pos);
+        });
+    };
+
     const onBlur = React.useCallback(() => {
         clearTimeout(blurTimer);
         blurTimer = setTimeout(closeChatPopout, BLUR_CLOSE_DELAY);
@@ -157,7 +176,14 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
                 className={Object.values(sidebarChatCss)[0] as string}
                 style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", width: "100%", height: "100%", minWidth: 0, minHeight: 0 }}
             >
-                <div className="fc-header">
+                <div
+                    className={dragging ? "fc-header fc-dragging" : "fc-header"}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    onLostPointerCapture={endDrag}
+                >
                     <span className="fc-title">{title}</span>
                     <button className="fc-close" title="Закрыть" onClick={closeChatPopout}>✕</button>
                 </div>
@@ -170,7 +196,10 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
 /** Куда поставить попаут: туда, куда его перетащили в прошлый раз, иначе рядом с виджетом плиток. */
 async function popoutPosition() {
     const saved = await DataStore.get<{ x: number; y: number; }>(POSITION_KEY);
-    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) return saved;
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        // Мониторы могли смениться — сохранённое место подвинуть в пределы экрана.
+        return await Native.clampRect(saved.x, saved.y, WIDTH, HEIGHT) ?? saved;
+    }
 
     const widget = await Native.getWidgetBounds();
     if (!widget) {
@@ -209,7 +238,6 @@ export async function openChatPopout(channelId: string, onClose: () => void) {
 
     isOpen = true;
     const { x, y } = await popoutPosition();
-    placedAt = { x, y };
 
     PopoutActions.open(
         POPOUT_KEY,
