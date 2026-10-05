@@ -36,6 +36,8 @@ let contentSize: { width: number; height: number; } | null = null;
 type Anchor = { right: number; top: number; };
 let anchor: Anchor | null = null;
 let anchorLoaded = false;
+/** Текущее перетаскивание: где был курсор и окно в начале. */
+let drag: { pointerX: number; pointerY: number; winX: number; winY: number; } | null = null;
 
 let queue: OverlayEvent[] = [];
 let waiter: ((ev: OverlayEvent | null) => void) | null = null;
@@ -135,7 +137,7 @@ function applyBounds() {
     win.setBounds(boundsFor(contentSize));
 }
 
-/** Пользователь перетащил виджет за ручку — запомнить новую точку привязки. */
+/** Виджет перетащили за ручку — запомнить новую точку привязки. */
 function onMoved() {
     if (!alive(win)) return;
     const b = win.getBounds();
@@ -201,6 +203,21 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
         case "close":
             pushEvent({ type: "close" });
             break;
+        case "dragStart": {
+            if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
+            const b = win.getBounds();
+            drag = { pointerX: action.x, pointerY: action.y, winX: b.x, winY: b.y };
+            break;
+        }
+        case "dragMove":
+            if (!drag || !Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
+            win.setPosition(Math.round(drag.winX + action.x - drag.pointerX), Math.round(drag.winY + action.y - drag.pointerY));
+            break;
+        case "dragEnd":
+            if (!drag) return;
+            drag = null;
+            onMoved();
+            break;
     }
 }
 
@@ -252,7 +269,6 @@ function createWindow() {
     w.on("blur", () => {
         if (state.chat) pushEvent({ type: "close" });
     });
-    w.on("moved", onMoved);
     w.on("closed", () => {
         if (win === w) {
             win = null;

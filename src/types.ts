@@ -83,7 +83,11 @@ export type OverlayAction =
     | { type: "layout"; width: number; height: number; }
     | { type: "tileClick"; channelId: string; }
     | { type: "send"; channelId: string; content: string; }
-    | { type: "close"; };
+    | { type: "close"; }
+    /** Перетаскивание виджета за ручку: экранные координаты курсора. */
+    | { type: "dragStart"; x: number; y: number; }
+    | { type: "dragMove"; x: number; y: number; }
+    | { type: "dragEnd"; };
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =

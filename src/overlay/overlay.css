@@ -60,8 +60,12 @@ body.vertical #tiles {
         radial-gradient(circle, rgb(255 255 255 / 55%) 1.2px, transparent 1.6px) center / 5px 6px,
         rgb(30 31 34 / 85%);
     box-shadow: 0 2px 6px rgb(0 0 0 / 45%);
-    cursor: move;
-    -webkit-app-region: drag;
+    cursor: grab;
+    touch-action: none;
+}
+
+.grip.dragging {
+    cursor: grabbing;
 }
 
 body.vertical .grip {

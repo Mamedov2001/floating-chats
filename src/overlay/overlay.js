@@ -66,9 +66,33 @@
 
     // Плитки живут между обновлениями: пересоздание заставляло бы картинки грузиться заново и мигать.
     const tileEls = new Map();
-    // Ручка для перетаскивания виджета: область -webkit-app-region: drag, окно двигает сама Windows.
+    // Ручка для перетаскивания виджета. Двигаем окно сами (через main): системный drag-region
+    // не работает у неперемещаемого окна и не показывает курсор-руку.
     const grip = el("div", "grip");
     grip.title = "Перетащите, чтобы переместить";
+    let dragging = false;
+
+    grip.addEventListener("pointerdown", e => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // Захват указателя — события идут, даже когда курсор выходит за пределы маленького окна.
+        try { grip.setPointerCapture(e.pointerId); } catch { }
+        dragging = true;
+        grip.classList.add("dragging");
+        api.send({ type: "dragStart", x: e.screenX, y: e.screenY });
+    });
+    grip.addEventListener("pointermove", e => {
+        if (dragging) api.send({ type: "dragMove", x: e.screenX, y: e.screenY });
+    });
+    const endDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        grip.classList.remove("dragging");
+        api.send({ type: "dragEnd" });
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
+    grip.addEventListener("lostpointercapture", endDrag);
 
     function setTileAvatar(tileEl, tile) {
         const url = validAvatar(tile.avatarUrl) ? tile.avatarUrl : null;
