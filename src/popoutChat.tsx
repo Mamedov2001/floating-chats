@@ -268,6 +268,17 @@ function PopoutChat({ windowKey, initialChannelId }: { windowKey: string; initia
         style.textContent = popoutCss(baseColor.current, popoutOpacity);
     }, [popoutOpacity]);
 
+    // В режиме SIDEBAR у Discord отключён автофокус поля ввода — ставим курсор сами (поле появляется не сразу).
+    React.useEffect(() => {
+        let tries = 0;
+        const timer = setInterval(() => {
+            const box = rootRef.current?.querySelector<HTMLElement>('[role="textbox"]');
+            if (box) box.focus();
+            if (box || ++tries >= 20) clearInterval(timer);
+        }, 100);
+        return () => clearInterval(timer);
+    }, [channelId]);
+
     const channel = useStateFromStores([ChannelStore], () => ChannelStore.getChannel(channelId), [channelId]);
     const guild = useStateFromStores([GuildStore], () => channel?.guild_id ? GuildStore.getGuild(channel.guild_id) : null, [channel]);
     const title = channel ? describe(channel).title : "";
