@@ -10,7 +10,7 @@
     const GROUP_GAP_MS = 7 * 60 * 1000;
     const PANEL_ANIM_MS = 160;
 
-    let state = { tiles: [], activeChannelId: null, chat: null };
+    let state = { orientation: "horizontal", tiles: [], activeChannelId: null, chat: null };
 
     function el(tag, className, text) {
         const node = document.createElement(tag);
@@ -66,6 +66,9 @@
 
     // Плитки живут между обновлениями: пересоздание заставляло бы картинки грузиться заново и мигать.
     const tileEls = new Map();
+    // Ручка для перетаскивания виджета: область -webkit-app-region: drag, окно двигает сама Windows.
+    const grip = el("div", "grip");
+    grip.title = "Перетащите, чтобы переместить";
 
     function setTileAvatar(tileEl, tile) {
         const url = validAvatar(tile.avatarUrl) ? tile.avatarUrl : null;
@@ -106,8 +109,8 @@
             return tileEl;
         });
         for (const id of tileEls.keys()) if (!seen.has(id)) tileEls.delete(id);
-        // Перестановка существующих узлов не перезагружает картинки.
-        tilesEl.replaceChildren(...els);
+        // Перестановка существующих узлов не перезагружает картинки. Ручка — в дальнем от угла конце.
+        tilesEl.replaceChildren(...els, grip);
     }
 
     // ---------- Панель чата ----------
@@ -312,6 +315,7 @@
 
     api.onUpdate(next => {
         state = next;
+        document.body.classList.toggle("vertical", state.orientation === "vertical");
         renderTiles();
         renderPanel();
     });

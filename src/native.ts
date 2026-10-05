@@ -4,7 +4,7 @@
 
 import { createHash } from "crypto";
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, screen } from "electron";
-import { appendFileSync, mkdirSync, statSync, writeFileSync } from "fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 
 import rawOverlayCss from "file://overlay/overlay.css";
@@ -25,9 +25,17 @@ const MAX_SIZE = 2000;
 const MAX_QUEUE = 100;
 
 let win: BrowserWindow | null = null;
-const EMPTY_STATE: OverlayState = { tiles: [], activeChannelId: null, chat: null };
+const EMPTY_STATE: OverlayState = { orientation: "horizontal", tiles: [], activeChannelId: null, chat: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
+
+/**
+ * Точка привязки виджета — правый верхний угол окна в экранных координатах. Окно растёт влево/вниз от неё,
+ * поэтому смена числа плиток или раскрытие панели не сдвигают виджет. null — угол рабочей области по умолчанию.
+ */
+type Anchor = { right: number; top: number; };
+let anchor: Anchor | null = null;
+let anchorLoaded = false;
 
 let queue: OverlayEvent[] = [];
 let waiter: ((ev: OverlayEvent | null) => void) | null = null;
@@ -88,16 +96,52 @@ function alive(w: BrowserWindow | null): w is BrowserWindow {
     return !!w && !w.isDestroyed();
 }
 
+const anchorFile = () => join(dataDir(), "position.json");
+
+function loadAnchor() {
+    if (anchorLoaded) return;
+    anchorLoaded = true;
+    try {
+        const a = JSON.parse(readFileSync(anchorFile(), "utf8"));
+        if (Number.isFinite(a?.right) && Number.isFinite(a?.top)) anchor = { right: a.right, top: a.top };
+    } catch { }
+}
+
+function saveAnchor() {
+    try {
+        if (anchor) writeFileSync(anchorFile(), JSON.stringify(anchor));
+        else rmSync(anchorFile(), { force: true });
+    } catch (e) {
+        log("save position failed", e);
+    }
+}
+
+function defaultAnchor(): Anchor {
+    const wa = screen.getPrimaryDisplay().workArea;
+    return { right: wa.x + wa.width - MARGIN_RIGHT + PAD, top: wa.y + MARGIN_TOP - PAD };
+}
+
+/** Прямоугольник окна для заданного размера: от точки привязки, но целиком в рабочей области её монитора. */
+function boundsFor(size: { width: number; height: number; }) {
+    const a = anchor ?? defaultAnchor();
+    const wa = screen.getDisplayNearestPoint({ x: Math.round(a.right) - 1, y: Math.round(a.top) }).workArea;
+    const x = Math.min(Math.max(a.right - size.width, wa.x), wa.x + wa.width - size.width);
+    const y = Math.min(Math.max(a.top, wa.y), wa.y + wa.height - size.height);
+    return { x: Math.round(x), y: Math.round(y), width: size.width, height: size.height };
+}
+
 function applyBounds() {
     if (!alive(win) || !contentSize) return;
+    win.setBounds(boundsFor(contentSize));
+}
 
-    const wa = screen.getPrimaryDisplay().workArea;
-    win.setBounds({
-        x: Math.round(wa.x + wa.width - MARGIN_RIGHT + PAD - contentSize.width),
-        y: Math.round(wa.y + MARGIN_TOP - PAD),
-        width: contentSize.width,
-        height: contentSize.height,
-    });
+/** Пользователь перетащил виджет за ручку — запомнить новую точку привязки. */
+function onMoved() {
+    if (!alive(win)) return;
+    const b = win.getBounds();
+    anchor = { right: b.x + b.width, top: b.y };
+    saveAnchor();
+    log("widget moved", anchor);
 }
 
 function updateVisibility() {
@@ -208,6 +252,7 @@ function createWindow() {
     w.on("blur", () => {
         if (state.chat) pushEvent({ type: "close" });
     });
+    w.on("moved", onMoved);
     w.on("closed", () => {
         if (win === w) {
             win = null;
@@ -235,6 +280,7 @@ export function initOverlay(_e: IpcMainInvokeEvent) {
         screen.on(ev as any, applyBounds);
     }
 
+    loadAnchor();
     win = createWindow();
     log("overlay created");
 }
@@ -243,6 +289,7 @@ export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
     const wasOpen = !!state.chat;
     const prevTiles = state.tiles.length;
     state = {
+        orientation: next?.orientation === "vertical" ? "vertical" : "horizontal",
         tiles: Array.isArray(next?.tiles) ? next.tiles : [],
         activeChannelId: next?.activeChannelId ?? null,
         chat: next?.chat ?? null,
@@ -283,4 +330,19 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
     waiter?.(null);
     waiter = null;
     log("overlay disposed");
+}
+
+/** Где сейчас виджет и рабочая область его монитора — чтобы renderer поставил попаут чата рядом. */
+export function getWidgetBounds(_e: IpcMainInvokeEvent) {
+    if (!alive(win) || !win.isVisible()) return null;
+    const bounds = win.getBounds();
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    return { bounds, workArea, pad: PAD };
+}
+
+export function resetWidgetPosition(_e: IpcMainInvokeEvent) {
+    anchor = null;
+    saveAnchor();
+    applyBounds();
+    log("widget position reset");
 }

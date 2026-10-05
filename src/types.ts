@@ -69,7 +69,10 @@ export interface ChatPanel {
 }
 
 /** Состояние, которое main пересылает в оверлей. */
+export type Orientation = "horizontal" | "vertical";
+
 export interface OverlayState {
+    orientation: Orientation;
     tiles: ChatTile[];
     activeChannelId: string | null;
     chat: ChatPanel | null;

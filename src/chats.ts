@@ -3,7 +3,7 @@
 import type { Channel, User } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    ChannelStore, GuildMemberStore, GuildStore, ReadStateStore, RelationshipStore,
+    ChannelStore, FluxDispatcher, GuildMemberStore, GuildStore, ReadStateStore, RelationshipStore,
     SelectedChannelStore, UserGuildSettingsStore, UserStore, WindowStore
 } from "@webpack/common";
 
@@ -119,6 +119,18 @@ export function importChats(saved: unknown) {
     }
 }
 
+/** Отметить канал прочитанным (как кнопка «прочитать всё» в Vencord: BULK_ACK по последнему сообщению). */
+export function markRead(channelId: string) {
+    if (!ReadStateStore.hasUnread(channelId)) return;
+    const messageId = ReadStateStore.lastMessageId(channelId);
+    if (!messageId) return;
+    FluxDispatcher.dispatch({
+        type: "BULK_ACK",
+        context: "APP",
+        channels: [{ channelId, messageId, readStateType: 0 }],
+    });
+}
+
 export function removeChat(channelId: string) {
     recent.delete(channelId);
 }
@@ -177,8 +189,11 @@ export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl"
     };
 }
 
-/** Собрать плитки: самые свежие первыми, не больше maxTiles. */
-export function buildTiles(): ChatTile[] {
+/**
+ * Собрать плитки: самые свежие первыми, не больше maxTiles.
+ * keepChannelId — открытый сейчас чат: его плитка остаётся, даже если всё прочитано.
+ */
+export function buildTiles(keepChannelId: string | null = null): ChatTile[] {
     const sorted = [...recent].sort((a, b) => b[1] - a[1]);
     const tiles: ChatTile[] = [];
 
@@ -192,10 +207,14 @@ export function buildTiles(): ChatTile[] {
         // Сверх лимита не показываем, но помним (лимит памяти — MAX_REMEMBERED).
         if (tiles.length >= settings.store.maxTiles) break;
 
+        const unread = ReadStateStore.getMentionCount(channelId);
+        // Прочитанные чаты прячем; вернутся с новым сообщением (чат остаётся в памяти).
+        if (settings.store.hideRead && unread <= 0 && channelId !== keepChannelId) continue;
+
         tiles.push({
             channelId,
             ...describe(channel),
-            unread: ReadStateStore.getMentionCount(channelId),
+            unread,
             lastMessageAt,
         });
     }

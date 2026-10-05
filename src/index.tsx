@@ -5,8 +5,9 @@ import definePlugin, { PluginNative } from "@utils/types";
 import { MessageStore, ReadStateStore, UserStore } from "@webpack/common";
 
 import { buildChatPanel, ensureHistory, maxMessageLength, resetHistoryRequests } from "./chatPanel";
-import { buildTiles, clearChats, exportChats, handleMessage, importChats, seedFromUnread } from "./chats";
-import { onTilesSettingChanged, settings } from "./settings";
+import { buildTiles, clearChats, exportChats, handleMessage, importChats, markRead, seedFromUnread } from "./chats";
+import { onResetPositions, onTilesSettingChanged, settings } from "./settings";
+import { closeChatPopout, openChatPopout, resetPopoutPosition } from "./spike/popoutChat";
 import type { MessageCreateEvent, OverlayEvent } from "./types";
 
 const logger = new Logger("FloatingChats", "#5865f2");
@@ -15,6 +16,9 @@ const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof 
 // Номер текущего цикла опроса: при stop()/повторном start() старый цикл видит чужой номер и выходит,
 // иначе два цикла бесконечно сбрасывали бы ожидание друг друга в nextEvent.
 let pollGeneration = 0;
+/** ВРЕМЕННО (spike): открывать чат в попауте Discord вместо своей панели. */
+const SPIKE_DISCORD_POPOUT = true;
+let popoutChannelId: string | null = null;
 let running = false;
 let activeChannelId: string | null = null;
 let lastSent = "";
@@ -58,14 +62,19 @@ function saveChats() {
 function pushState() {
     if (!running) return;
 
-    const tiles = buildTiles();
+    const tiles = buildTiles(activeChannelId ?? popoutChannelId);
     saveChats();
     if (activeChannelId && !tiles.some(t => t.channelId === activeChannelId)) activeChannelId = null;
     const chat = activeChannelId ? buildChatPanel(activeChannelId, sendErrors.get(activeChannelId)) : null;
     if (!chat) activeChannelId = null;
 
     // Сторы Discord меняются на каждое сообщение в любом канале — не гоняем IPC без изменений.
-    const state = { tiles, activeChannelId, chat };
+    const state = {
+        orientation: settings.store.orientation === "vertical" ? "vertical" as const : "horizontal" as const,
+        tiles,
+        activeChannelId: activeChannelId ?? popoutChannelId,
+        chat,
+    };
     const payload = JSON.stringify(state);
     if (payload === lastSent) return;
     lastSent = payload;
@@ -112,6 +121,26 @@ async function sendFromOverlay(channelId: string, content: string) {
 function handleOverlayEvent(ev: OverlayEvent) {
     switch (ev.type) {
         case "tileClick":
+            // ВРЕМЕННО (spike): вместо своей панели — настоящий чат Discord в его попауте.
+            if (SPIKE_DISCORD_POPOUT) {
+                // Повторный клик по открытой плитке — закрыть чат.
+                if (popoutChannelId === ev.channelId) {
+                    closeChatPopout();
+                    break;
+                }
+                // Переключились на другой чат — предыдущий просмотрен.
+                if (popoutChannelId) markRead(popoutChannelId);
+                popoutChannelId = ev.channelId;
+                markRead(ev.channelId);
+                openChatPopout(ev.channelId, () => {
+                    // Закрыли чат — всё, что пришло, пока он был открыт, тоже просмотрено.
+                    if (popoutChannelId) markRead(popoutChannelId);
+                    popoutChannelId = null;
+                    scheduleRefresh();
+                }).catch(e => logger.error("Не удалось открыть чат", e));
+                scheduleRefresh();
+                break;
+            }
             setActive(activeChannelId === ev.channelId ? null : ev.channelId);
             break;
         case "send":
@@ -167,6 +196,10 @@ export default definePlugin({
         running = true;
         lastSent = "";
         onTilesSettingChanged.fn = scheduleRefresh;
+        onResetPositions.fn = () => {
+            Native.resetWidgetPosition().catch(e => logger.error("Не удалось сбросить позицию виджета", e));
+            resetPopoutPosition().catch(e => logger.error("Не удалось сбросить позицию чата", e));
+        };
         ReadStateStore.addChangeListener(scheduleRefresh);
         // История открытого чата: новые, изменённые, удалённые сообщения и догрузка.
         MessageStore.addChangeListener(scheduleRefresh);
@@ -182,7 +215,9 @@ export default definePlugin({
         running = false;
         pollGeneration++;
         clearTimeout(refreshTimer);
+        closeChatPopout();
         onTilesSettingChanged.fn = () => { };
+        onResetPositions.fn = () => { };
         ReadStateStore.removeChangeListener(scheduleRefresh);
         MessageStore.removeChangeListener(scheduleRefresh);
         clearChats();

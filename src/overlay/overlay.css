@@ -40,6 +40,36 @@ body {
     gap: var(--gap);
 }
 
+/* Вертикально: плитки столбиком (свежая сверху), панель чата — слева от них. */
+body.vertical #root {
+    flex-direction: row-reverse;
+    align-items: flex-start;
+}
+
+body.vertical #tiles {
+    flex-direction: column;
+}
+
+.grip {
+    flex: none;
+    align-self: center;
+    width: 10px;
+    height: 36px;
+    border-radius: 5px;
+    background:
+        radial-gradient(circle, rgb(255 255 255 / 55%) 1.2px, transparent 1.6px) center / 5px 6px,
+        rgb(30 31 34 / 85%);
+    box-shadow: 0 2px 6px rgb(0 0 0 / 45%);
+    cursor: move;
+    -webkit-app-region: drag;
+}
+
+body.vertical .grip {
+    width: 36px;
+    height: 10px;
+    background-size: 6px 5px, auto;
+}
+
 .tile {
     position: relative;
     width: var(--tile-size);
