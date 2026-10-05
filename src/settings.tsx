@@ -27,6 +27,12 @@ export const settings = definePluginSettings({
         default: true,
         onChange: refresh,
     },
+    includeReactions: {
+        type: OptionType.BOOLEAN,
+        description: "Реакции на мои сообщения",
+        default: true,
+        onChange: refresh,
+    },
     respectMuted: {
         type: OptionType.BOOLEAN,
         description: "Не показывать заглушённые каналы, серверы и ЛС",

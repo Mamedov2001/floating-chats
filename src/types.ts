@@ -96,6 +96,16 @@ export type OverlayEvent =
     /** Свернуть панель: Esc в оверлее или клик мимо (окно потеряло фокус). */
     | { type: "close"; };
 
+/** Flux-событие MESSAGE_REACTION_ADD (поля как их кладёт Discord из гейтвея). */
+export interface ReactionAddEvent {
+    channelId: string;
+    messageId: string;
+    userId: string;
+    optimistic?: boolean;
+    /** Автор сообщения, на которое поставили реакцию (message_author_id из гейтвея). */
+    messageAuthorId?: string;
+}
+
 export interface MessageCreateEvent {
     channelId: string;
     message: RawMessage;

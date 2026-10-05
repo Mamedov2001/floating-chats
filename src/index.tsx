@@ -5,10 +5,10 @@ import definePlugin, { PluginNative } from "@utils/types";
 import { MessageStore, ReadStateStore, UserStore } from "@webpack/common";
 
 import { buildChatPanel, ensureHistory, maxMessageLength, resetHistoryRequests } from "./chatPanel";
-import { buildTiles, clearChats, exportChats, handleMessage, importChats, markRead, seedFromUnread } from "./chats";
+import { buildTiles, clearChats, clearReactions, exportChats, handleMessage, handleReaction, importChats, markRead, seedFromUnread } from "./chats";
 import { onResetPositions, onTilesSettingChanged, settings } from "./settings";
 import { closeChatPopout, openChatPopout, resetPopoutPosition } from "./spike/popoutChat";
-import type { MessageCreateEvent, OverlayEvent } from "./types";
+import type { MessageCreateEvent, OverlayEvent, ReactionAddEvent } from "./types";
 
 const logger = new Logger("FloatingChats", "#5865f2");
 const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("./native")>;
@@ -185,6 +185,17 @@ export default definePlugin({
                 logger.info("Плитка обновлена:", message.channel_id);
                 scheduleRefresh();
             }
+        },
+        MESSAGE_REACTION_ADD(ev: ReactionAddEvent) {
+            if (!running) return;
+            if (handleReaction(ev)) {
+                logger.info("Реакция на моё сообщение:", ev.channelId);
+                scheduleRefresh();
+            }
+        },
+        // Открыли канал в самом Discord — его реакции просмотрены.
+        CHANNEL_SELECT({ channelId }: { channelId?: string | null; }) {
+            if (running && channelId && clearReactions(channelId)) scheduleRefresh();
         },
         // Данные Discord (каналы, непрочитанное) загружены — после старта или переподключения.
         CONNECTION_OPEN() {

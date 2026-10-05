@@ -3,18 +3,20 @@
 import type { Channel, User } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    ChannelStore, FluxDispatcher, GuildMemberStore, GuildStore, ReadStateStore, RelationshipStore,
+    ChannelStore, FluxDispatcher, GuildMemberStore, GuildStore, MessageStore, ReadStateStore, RelationshipStore,
     SelectedChannelStore, UserGuildSettingsStore, UserStore, WindowStore
 } from "@webpack/common";
 
 import { settings } from "./settings";
-import type { ChatTile, RawMessage } from "./types";
+import type { ChatTile, RawMessage, ReactionAddEvent } from "./types";
 
 const CDN = "https://cdn.discordapp.com";
 const DISCORD_EPOCH = 1420070400000n;
 
 /** channelId → время последнего сообщения (мс). Порядок плиток определяется этим временем. */
 const recent = new Map<string, number>();
+/** Новые реакции на мои сообщения по каналам: Discord их в непрочитанное не считает — считаем сами. */
+const reactions = new Map<string, number>();
 /** Сколько чатов помнить (с запасом над maxTiles: часть может быть скрыта настройками). */
 const MAX_REMEMBERED = 50;
 
@@ -96,6 +98,34 @@ export function handleMessage(message: RawMessage): boolean {
     return true;
 }
 
+/**
+ * Реакция на сообщение. Плитку поднимает только чужая реакция на МОЁ сообщение.
+ * Возвращает true, если набор плиток мог измениться.
+ */
+export function handleReaction(ev: ReactionAddEvent): boolean {
+    if (!settings.store.includeReactions || ev.optimistic) return false;
+
+    const me = UserStore.getCurrentUser();
+    if (!me || ev.userId === me.id) return false;
+
+    const authorId = ev.messageAuthorId ?? MessageStore.getMessage(ev.channelId, ev.messageId)?.author?.id;
+    if (authorId !== me.id) return false;
+
+    const channel = ChannelStore.getChannel(ev.channelId);
+    if (!channel || !channelAllowed(channel)) return false;
+    if (RelationshipStore.isBlocked(ev.userId)) return false;
+    if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
+
+    reactions.set(channel.id, (reactions.get(channel.id) ?? 0) + 1);
+    remember(channel.id, Date.now());
+    return true;
+}
+
+/** Реакции в канале просмотрены (открыли чат в оверлее или в самом Discord). */
+export function clearReactions(channelId: string) {
+    return reactions.delete(channelId);
+}
+
 /** Подхватить ЛС и группы, где уже есть непрочитанное (вызывать после загрузки данных Discord). */
 export function seedFromUnread() {
     for (const channel of ChannelStore.getSortedPrivateChannels()) {
@@ -121,6 +151,7 @@ export function importChats(saved: unknown) {
 
 /** Отметить канал прочитанным (как кнопка «прочитать всё» в Vencord: BULK_ACK по последнему сообщению). */
 export function markRead(channelId: string) {
+    clearReactions(channelId);
     if (!ReadStateStore.hasUnread(channelId)) return;
     const messageId = ReadStateStore.lastMessageId(channelId);
     if (!messageId) return;
@@ -137,6 +168,7 @@ export function removeChat(channelId: string) {
 
 export function clearChats() {
     recent.clear();
+    reactions.clear();
 }
 
 export function userAvatarUrl(userId: string, user: User | undefined) {
@@ -207,7 +239,7 @@ export function buildTiles(keepChannelId: string | null = null): ChatTile[] {
         // Сверх лимита не показываем, но помним (лимит памяти — MAX_REMEMBERED).
         if (tiles.length >= settings.store.maxTiles) break;
 
-        const unread = ReadStateStore.getMentionCount(channelId);
+        const unread = ReadStateStore.getMentionCount(channelId) + (reactions.get(channelId) ?? 0);
         // Прочитанные чаты прячем; вернутся с новым сообщением (чат остаётся в памяти).
         if (settings.store.hideRead && unread <= 0 && channelId !== keepChannelId) continue;
 
