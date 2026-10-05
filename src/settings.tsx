@@ -45,6 +45,12 @@ export const settings = definePluginSettings({
         default: true,
         onChange: refresh,
     },
+    showLabels: {
+        type: OptionType.BOOLEAN,
+        description: "Подписи под плитками (имя, канал и сервер)",
+        default: true,
+        onChange: refresh,
+    },
     orientation: {
         type: OptionType.SELECT,
         description: "Расположение плиток",

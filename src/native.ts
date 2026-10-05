@@ -26,7 +26,7 @@ const MAX_SIZE = 2000;
 const MAX_QUEUE = 100;
 
 let win: BrowserWindow | null = null;
-const EMPTY_STATE: OverlayState = { orientation: "horizontal", tiles: [], activeChannelId: null, chat: null };
+const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null, chat: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
 
@@ -323,6 +323,7 @@ export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
     const prevTiles = state.tiles.length;
     state = {
         orientation: next?.orientation === "vertical" ? "vertical" : "horizontal",
+        showLabels: next?.showLabels !== false,
         tiles: Array.isArray(next?.tiles) ? next.tiles : [],
         activeChannelId: next?.activeChannelId ?? null,
         chat: next?.chat ?? null,

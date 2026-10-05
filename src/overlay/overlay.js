@@ -10,7 +10,7 @@
     const GROUP_GAP_MS = 7 * 60 * 1000;
     const PANEL_ANIM_MS = 160;
 
-    let state = { orientation: "horizontal", tiles: [], activeChannelId: null, chat: null };
+    let state = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null, chat: null };
 
     function el(tag, className, text) {
         const node = document.createElement(tag);
@@ -124,17 +124,25 @@
         if (url) tileEl.querySelector(".initials").after(avatarImg(url));
     }
 
+    /** Элемент плитки: сама плитка + подпись под ней (имя / #канал и сервер). */
     function createTile(channelId) {
+        const item = el("div", "tile-item");
         const tileEl = el("div", "tile");
         const initials = el("div", "initials");
         initials.style.background = colorFor(channelId);
         tileEl.append(initials, el("div", "badge"));
-        tileEl.addEventListener("click", () => api.send({ type: "tileClick", channelId }));
-        return tileEl;
+
+        const label = el("div", "tile-label");
+        label.append(el("span", "label-name"), el("span", "label-context"));
+
+        item.append(tileEl, label);
+        item.addEventListener("click", () => api.send({ type: "tileClick", channelId }));
+        return item;
     }
 
-    function updateTile(tileEl, tile) {
-        tileEl.title = tile.title;
+    function updateTile(item, tile) {
+        const tileEl = item.querySelector(".tile");
+        item.title = tile.title;
         tileEl.classList.toggle("active", tile.channelId === state.activeChannelId);
         tileEl.querySelector(".initials").textContent = tile.initials;
         setTileAvatar(tileEl, tile);
@@ -142,6 +150,13 @@
         const badge = tileEl.querySelector(".badge");
         badge.hidden = !(tile.unread > 0);
         badge.textContent = tile.unread > 99 ? "99+" : String(tile.unread);
+
+        const label = item.querySelector(".tile-label");
+        label.hidden = !state.showLabels;
+        label.querySelector(".label-name").textContent = tile.name || tile.title;
+        const context = label.querySelector(".label-context");
+        context.textContent = tile.context ?? "";
+        context.hidden = !tile.context;
     }
 
     function renderTiles() {
@@ -361,6 +376,7 @@
     api.onUpdate(next => {
         state = next;
         document.body.classList.toggle("vertical", state.orientation === "vertical");
+        document.body.classList.toggle("labels", state.showLabels !== false);
         renderTiles();
         renderPanel();
     });

@@ -71,6 +71,7 @@ function pushState() {
     // Сторы Discord меняются на каждое сообщение в любом канале — не гоняем IPC без изменений.
     const state = {
         orientation: settings.store.orientation === "vertical" ? "vertical" as const : "horizontal" as const,
+        showLabels: settings.store.showLabels,
         tiles,
         activeChannelId: activeChannelId ?? popoutChannelId,
         chat,

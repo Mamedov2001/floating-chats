@@ -193,12 +193,12 @@ export function userName(userId: string, user: User | undefined) {
     return RelationshipStore.getNickname(userId) || user?.globalName || user?.username || "Неизвестный";
 }
 
-export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "initials"> {
+export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "initials" | "name" | "context"> {
     if (channel.type === ChannelType.DM) {
         const userId = channel.getRecipientId() ?? channel.recipients?.[0];
         const user = userId ? UserStore.getUser(userId) : undefined;
         const title = userId ? userName(userId, user) : (channel.name || "ЛС");
-        return { title, avatarUrl: userId ? userAvatarUrl(userId, user) : undefined, initials: makeInitials(title) };
+        return { title, name: title, avatarUrl: userId ? userAvatarUrl(userId, user) : undefined, initials: makeInitials(title) };
     }
 
     if (channel.type === ChannelType.GROUP_DM) {
@@ -207,6 +207,7 @@ export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl"
             || "Группа";
         return {
             title,
+            name: title,
             avatarUrl: channel.icon ? `${CDN}/channel-icons/${channel.id}/${channel.icon}.png?size=128` : undefined,
             initials: makeInitials(title),
         };
@@ -216,6 +217,8 @@ export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl"
     const guildName = guild?.name ?? "Сервер";
     return {
         title: `#${channel.name} · ${guildName}`,
+        name: `#${channel.name}`,
+        context: guildName,
         avatarUrl: guild?.icon ? `${CDN}/icons/${guild.id}/${guild.icon}.png?size=128` : undefined,
         initials: makeInitials(guildName),
     };

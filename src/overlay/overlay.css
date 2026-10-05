@@ -48,6 +48,7 @@ body.vertical #root {
 
 body.vertical #tiles {
     flex-direction: column;
+    align-items: center;
 }
 
 /* Ручка перетаскивания: «таблетка» в стиле плиток с иконкой из точек. */
@@ -90,6 +91,64 @@ body.vertical .grip {
 
 body.vertical .grip svg {
     transform: rotate(90deg);
+}
+
+/* Плитка с подписью под ней. Ширина чуть больше плитки, длинный текст — с многоточием. */
+.tile-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: var(--tile-size);
+    cursor: pointer;
+}
+
+/* С подписями элемент шире плитки — в ряду компенсируем это меньшим промежутком. */
+body.labels .tile-item {
+    width: calc(var(--tile-size) + 16px);
+}
+
+body.labels:not(.vertical) #tiles {
+    gap: 2px;
+}
+
+.tile-label {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 1px 5px;
+    border-radius: 4px;
+    /* Подложка — чтобы подпись читалась поверх любого фона рабочего стола. */
+    background: rgb(30 31 34 / 85%);
+    text-align: center;
+}
+
+.tile-label[hidden] {
+    display: none;
+}
+
+.tile-label span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.label-name {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 14px;
+}
+
+.label-context {
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 12px;
+}
+
+.label-context[hidden] {
+    display: none;
 }
 
 .tile {

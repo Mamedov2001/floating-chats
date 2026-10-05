@@ -30,6 +30,10 @@ export interface ChatTile {
     avatarUrl?: string;
     /** Подпись-заглушка, если аватара нет или он не загрузился. */
     initials: string;
+    /** Подпись под плиткой: имя собеседника / название группы / #канал. */
+    name: string;
+    /** Вторая строка подписи: сервер (для ЛС и групп нет). */
+    context?: string;
     unread: number;
     lastMessageAt: number;
 }
@@ -73,6 +77,7 @@ export type Orientation = "horizontal" | "vertical";
 
 export interface OverlayState {
     orientation: Orientation;
+    showLabels: boolean;
     tiles: ChatTile[];
     activeChannelId: string | null;
     chat: ChatPanel | null;
