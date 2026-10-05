@@ -27,7 +27,7 @@ const MAX_QUEUE = 100;
 const TILE_MENU_ACTIONS = new Set<TileMenuAction>(["markRead", "openInDiscord", "remove"]);
 
 let win: BrowserWindow | null = null;
-const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, hideWhenDiscordFocused: false, tiles: [], activeChannelId: null };
+const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, hideWhenDiscordFocused: false, showWhenEmpty: true, tiles: [], activeChannelId: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
 
@@ -185,7 +185,8 @@ function updateVisibility() {
     if (!alive(win)) return;
 
     const discordFocused = !!discordWin && !discordWin.isDestroyed() && discordWin.isFocused();
-    if (!state.tiles.length || (state.hideWhenDiscordFocused && discordFocused)) {
+    const empty = !state.tiles.length && !state.showWhenEmpty;
+    if (empty || (state.hideWhenDiscordFocused && discordFocused)) {
         if (win.isVisible()) win.hide();
     } else if (contentSize && !win.isVisible()) {
         // showInactive — показать, не забирая фокус у текущего окна (браузера, IDE).
@@ -338,6 +339,7 @@ export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
         orientation: next?.orientation === "vertical" ? "vertical" : "horizontal",
         showLabels: next?.showLabels !== false,
         hideWhenDiscordFocused: next?.hideWhenDiscordFocused === true,
+        showWhenEmpty: next?.showWhenEmpty !== false,
         tiles: Array.isArray(next?.tiles) ? next.tiles : [],
         activeChannelId: next?.activeChannelId ?? null,
     };

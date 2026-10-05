@@ -21,6 +21,7 @@ and reply without switching to Discord.
 - **Drag** the widget by its handle and the chat by its header. Both remember their position and
   can't be dragged off the screen.
 - Horizontal or vertical tiles, chat background opacity, hide the widget while Discord is focused.
+- With no new messages a faint placeholder tile stays on screen, so you know where tiles will appear.
 - Tiles never steal focus from the app you're using. The tile list survives Discord restarts.
 
 ## Requirements
@@ -77,6 +78,7 @@ Then restart Discord. To restart it cleanly, open DevTools in Discord (`Ctrl+Shi
 | Hide muted channels, servers and DMs | on | |
 | Hide a tile once the chat is read | on | It comes back with the next message |
 | Show labels under tiles | on | Name, or `#channel` and server |
+| Show the widget when there are no new messages | on | A placeholder tile marks where tiles will appear |
 | Hide the widget while the Discord window is focused | off | |
 | Tile layout | Horizontal | Horizontal or vertical |
 | Chat background opacity | 85% | |

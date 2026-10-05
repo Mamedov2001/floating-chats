@@ -111,6 +111,37 @@ body.vertical .grip svg {
     }
 }
 
+/* Заглушка «нет новых сообщений»: пунктирная пустая плитка, неяркая, чтобы не отвлекать. */
+.tile-item.placeholder {
+    opacity: 0.55;
+    cursor: default;
+    transition: opacity 0.15s ease;
+}
+
+.tile-item.placeholder:hover {
+    opacity: 0.9;
+}
+
+.tile-item.placeholder .tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 2px dashed rgb(255 255 255 / 35%);
+    background: rgb(30 31 34 / 70%);
+    color: #b5bac1;
+}
+
+/* Подпись заглушки короткая и фиксированная — переносим на две строки вместо многоточия. */
+.tile-item.placeholder .tile-label span {
+    white-space: normal;
+}
+
+.tile-item.placeholder .tile:hover {
+    border-radius: 16px;
+    transform: none;
+}
+
 /* С подписями элемент шире плитки — в ряду компенсируем это меньшим промежутком. */
 body.labels .tile-item {
     width: calc(var(--tile-size) + 16px);

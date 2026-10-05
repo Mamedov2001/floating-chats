@@ -45,6 +45,8 @@ export interface OverlayState {
     showLabels: boolean;
     /** Прятать виджет, пока активно основное окно Discord. */
     hideWhenDiscordFocused: boolean;
+    /** Без чатов показывать заглушку (чтобы было видно, где появятся сообщения), а не прятать виджет. */
+    showWhenEmpty: boolean;
     tiles: ChatTile[];
     /** Чат, открытый сейчас в попауте, — его плитка подсвечена. */
     activeChannelId: string | null;

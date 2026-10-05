@@ -7,7 +7,7 @@
     const TILE_COLORS = ["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#9b59b6", "#1abc9c"];
     const AVATAR_ORIGIN = "https://cdn.discordapp.com/";
 
-    let state = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null };
+    let state = { orientation: "horizontal", showLabels: true, showWhenEmpty: true, tiles: [], activeChannelId: null };
 
     function el(tag, className, text) {
         const node = document.createElement(tag);
@@ -51,6 +51,34 @@
     }
 
     // ---------- Плитки ----------
+
+    /** Иконка облачка сообщения для заглушки «нет новых сообщений». */
+    function chatIcon() {
+        const NS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(NS, "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("width", "24");
+        svg.setAttribute("height", "24");
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", "M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 4 13.5z");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.8");
+        path.setAttribute("stroke-linejoin", "round");
+        svg.append(path);
+        return svg;
+    }
+
+    // Заглушка на месте плиток, когда чатов нет: видно, где появятся сообщения, и виджет можно передвинуть.
+    const placeholder = el("div", "tile-item placeholder");
+    placeholder.title = "New messages will appear here";
+    {
+        const tile = el("div", "tile");
+        tile.append(chatIcon());
+        const label = el("div", "tile-label");
+        label.append(el("span", "label-name", "No new messages"));
+        placeholder.append(tile, label);
+    }
 
     /** Иконка ручки: 2×3 точки (inline SVG — это DOM, а не загрузка картинки, CSP не мешает). */
     function gripIcon() {
@@ -167,6 +195,10 @@
             return tileEl;
         });
         for (const id of tileEls.keys()) if (!seen.has(id)) tileEls.delete(id);
+        if (!els.length && state.showWhenEmpty !== false) {
+            placeholder.querySelector(".tile-label").hidden = !state.showLabels;
+            els.push(placeholder);
+        }
         if (menuChannel && !seen.has(menuChannel)) closeMenu();
         // Перестановка существующих узлов не перезагружает картинки. Ручка — в дальнем от угла конце.
         tilesEl.replaceChildren(...els, grip);

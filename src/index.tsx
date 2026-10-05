@@ -64,6 +64,7 @@ function pushState() {
         orientation: settings.store.orientation === "vertical" ? "vertical" : "horizontal",
         showLabels: settings.store.showLabels,
         hideWhenDiscordFocused: settings.store.hideWhenDiscordFocused,
+        showWhenEmpty: settings.store.showWhenEmpty,
         tiles,
         activeChannelId: openChannelId,
     };

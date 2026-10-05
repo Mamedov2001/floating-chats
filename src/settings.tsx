@@ -51,6 +51,12 @@ export const settings = definePluginSettings({
         default: true,
         onChange: refresh,
     },
+    showWhenEmpty: {
+        type: OptionType.BOOLEAN,
+        description: "Show the widget when there are no new messages (a placeholder marks where tiles will appear)",
+        default: true,
+        onChange: refresh,
+    },
     hideWhenDiscordFocused: {
         type: OptionType.BOOLEAN,
         description: "Hide the widget while the Discord window is focused",
