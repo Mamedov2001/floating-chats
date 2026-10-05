@@ -49,6 +49,8 @@ export interface ChatMessage {
     replyTo?: string;
     /** Вложения, стикеры и т.п. одной строкой каждое. */
     extras: string[];
+    /** Своё сообщение ещё отправляется или не отправилось. */
+    status?: "sending" | "failed";
 }
 
 /** Раскрытая панель чата. */
@@ -60,6 +62,10 @@ export interface ChatPanel {
     placeholder: string;
     messages: ChatMessage[];
     loading: boolean;
+    /** Ошибка последней отправки из оверлея. */
+    error?: string;
+    /** Максимальная длина сообщения (2000, с Nitro 4000). */
+    maxLength: number;
 }
 
 /** Состояние, которое main пересылает в оверлей. */
@@ -73,11 +79,13 @@ export interface OverlayState {
 export type OverlayAction =
     | { type: "layout"; width: number; height: number; }
     | { type: "tileClick"; channelId: string; }
+    | { type: "send"; channelId: string; content: string; }
     | { type: "close"; };
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =
     | { type: "tileClick"; channelId: string; }
+    | { type: "send"; channelId: string; content: string; }
     /** Свернуть панель: Esc в оверлее или клик мимо (окно потеряло фокус). */
     | { type: "close"; };
 

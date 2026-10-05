@@ -1,9 +1,10 @@
 import * as DataStore from "@api/DataStore";
+import { sendMessage } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
 import { MessageStore, ReadStateStore, UserStore } from "@webpack/common";
 
-import { buildChatPanel, ensureHistory, resetHistoryRequests } from "./chatPanel";
+import { buildChatPanel, ensureHistory, maxMessageLength, resetHistoryRequests } from "./chatPanel";
 import { buildTiles, clearChats, exportChats, handleMessage, importChats, seedFromUnread } from "./chats";
 import { onTilesSettingChanged, settings } from "./settings";
 import type { MessageCreateEvent, OverlayEvent } from "./types";
@@ -18,6 +19,8 @@ let running = false;
 let activeChannelId: string | null = null;
 let lastSent = "";
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+/** Ошибка последней отправки по каналу — показывается в панели до следующей удачной отправки. */
+const sendErrors = new Map<string, string>();
 
 // Список чатов переживает перезапуск Discord. Ключ — по аккаунту, чтобы не смешивать несколько аккаунтов.
 let storeKey: string | null = null;
@@ -58,7 +61,7 @@ function pushState() {
     const tiles = buildTiles();
     saveChats();
     if (activeChannelId && !tiles.some(t => t.channelId === activeChannelId)) activeChannelId = null;
-    const chat = activeChannelId ? buildChatPanel(activeChannelId) : null;
+    const chat = activeChannelId ? buildChatPanel(activeChannelId, sendErrors.get(activeChannelId)) : null;
     if (!chat) activeChannelId = null;
 
     // Сторы Discord меняются на каждое сообщение в любом канале — не гоняем IPC без изменений.
@@ -83,10 +86,36 @@ function scheduleRefresh() {
     refreshTimer = setTimeout(pushState, 50);
 }
 
+async function sendFromOverlay(channelId: string, content: string) {
+    // Оверлей может писать только в открытый в нём чат.
+    if (channelId !== activeChannelId) return;
+
+    const limit = maxMessageLength();
+    if (content.length > limit) {
+        sendErrors.set(channelId, `Сообщение длиннее ${limit} символов`);
+        scheduleRefresh();
+        return;
+    }
+
+    sendErrors.delete(channelId);
+    try {
+        // waitForChannelReady = false: канал не открыт в Discord, ждать его загрузки не нужно.
+        // Сообщение сразу попадает в MessageStore со статусом SENDING — панель покажет его мгновенно.
+        await sendMessage(channelId, { content }, false);
+    } catch (e) {
+        logger.error("Не удалось отправить сообщение", channelId, e);
+        sendErrors.set(channelId, "Не удалось отправить сообщение");
+    }
+    scheduleRefresh();
+}
+
 function handleOverlayEvent(ev: OverlayEvent) {
     switch (ev.type) {
         case "tileClick":
             setActive(activeChannelId === ev.channelId ? null : ev.channelId);
+            break;
+        case "send":
+            sendFromOverlay(ev.channelId, ev.content);
             break;
         case "close":
             if (activeChannelId) setActive(null);
@@ -157,6 +186,7 @@ export default definePlugin({
         ReadStateStore.removeChangeListener(scheduleRefresh);
         MessageStore.removeChangeListener(scheduleRefresh);
         clearChats();
+        sendErrors.clear();
         storeKey = null;
         lastSaved = "";
         resetHistoryRequests();

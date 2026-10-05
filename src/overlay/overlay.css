@@ -285,6 +285,29 @@ body {
     padding: 0 14px 14px;
 }
 
+.composer-note {
+    padding: 0 2px 6px;
+    color: var(--red);
+    font-size: 12px;
+}
+
+.composer-note[hidden] {
+    display: none;
+}
+
+.line.sending {
+    opacity: 0.5;
+}
+
+.line.failed .text {
+    color: var(--red);
+}
+
+.failed-note {
+    color: var(--red);
+    font-size: 11px;
+}
+
 .input {
     display: block;
     width: 100%;

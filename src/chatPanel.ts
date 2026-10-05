@@ -14,6 +14,12 @@ import type { ChatMessage, ChatPanel } from "./types";
 const logger = new Logger("FloatingChats");
 
 const HISTORY_LIMIT = 50;
+/** PremiumType.TIER_2 — Nitro: сообщения до 4000 символов. */
+const NITRO = 2;
+
+export function maxMessageLength() {
+    return UserStore.getCurrentUser()?.premiumType === NITRO ? 4000 : 2000;
+}
 const SHOWN_TYPES = new Set<number>([MessageType.DEFAULT, MessageType.REPLY, MessageType.CHAT_INPUT_COMMAND, MessageType.CONTEXT_MENU_COMMAND]);
 
 /** Каналы, для которых уже запрошена история (чтобы не дёргать API на каждое обновление). */
@@ -98,6 +104,7 @@ function toChatMessage(m: Message, channel: Channel, myId: string): ChatMessage 
         edited: !!m.editedTimestamp,
         replyTo,
         extras,
+        status: m.state === "SENDING" ? "sending" : m.state === "SEND_FAILED" ? "failed" : undefined,
     };
 }
 
@@ -107,7 +114,7 @@ function placeholderFor(channel: Channel, title: string) {
     return `Написать в #${channel.name}`;
 }
 
-export function buildChatPanel(channelId: string): ChatPanel | null {
+export function buildChatPanel(channelId: string, error?: string): ChatPanel | null {
     const channel = ChannelStore.getChannel(channelId);
     const me = UserStore.getCurrentUser();
     if (!channel || !me) return null;
@@ -126,5 +133,7 @@ export function buildChatPanel(channelId: string): ChatPanel | null {
         placeholder: placeholderFor(channel, head.title),
         messages,
         loading: !msgs?.ready && !messages.length,
+        error,
+        maxLength: maxMessageLength(),
     };
 }

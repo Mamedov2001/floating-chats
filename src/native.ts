@@ -148,6 +148,12 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
             break;
+        case "send":
+            // Отправлять можно только в открытый сейчас чат; размер — с запасом над лимитом Discord.
+            if (typeof action.channelId === "string" && action.channelId === state.chat?.channelId
+                && typeof action.content === "string" && action.content.trim() && action.content.length <= 4000)
+                pushEvent({ type: "send", channelId: action.channelId, content: action.content });
+            break;
         case "close":
             pushEvent({ type: "close" });
             break;

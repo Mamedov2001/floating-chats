@@ -116,10 +116,12 @@
     const headerTitle = el("div", "head-title");
     const messagesEl = el("div", "messages");
     const composer = el("div", "composer");
+    const composerNote = el("div", "composer-note");
+    composerNote.hidden = true;
     const input = el("textarea", "input");
     input.rows = 1;
     input.spellcheck = true;
-    composer.append(input);
+    composer.append(composerNote, input);
     panel.append(header, messagesEl, composer);
 
     /** Черновики по каналам, чтобы не терять набранное при переключении/сворачивании. */
@@ -133,9 +135,43 @@
         input.style.height = Math.min(input.scrollHeight, 140) + "px";
     }
 
+    let maxLength = 2000;
+    let localNote = null;
+
+    /** Строка над полем ввода: локальная подсказка (длина) важнее ошибки отправки из Discord. */
+    function renderNote() {
+        const text = localNote ?? state.chat?.error ?? null;
+        composerNote.hidden = !text;
+        composerNote.textContent = text ?? "";
+    }
+
     input.addEventListener("input", () => {
         if (currentChannel) drafts.set(currentChannel, input.value);
+        localNote = input.value.length > maxLength ? `${input.value.length} / ${maxLength} — слишком длинно` : null;
+        renderNote();
         autosizeInput();
+    });
+
+    function submit() {
+        const content = input.value;
+        if (!currentChannel || !content.trim()) return;
+        // Слишком длинное не отправляем и не стираем — пусть пользователь сократит.
+        if (content.length > maxLength) return;
+
+        api.send({ type: "send", channelId: currentChannel, content });
+        input.value = "";
+        drafts.delete(currentChannel);
+        localNote = null;
+        renderNote();
+        autosizeInput();
+    }
+
+    input.addEventListener("keydown", e => {
+        // Enter — отправить, Shift+Enter — новая строка; во время набора через IME Enter не трогаем.
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+            e.preventDefault();
+            submit();
+        }
     });
 
     function formatTime(ts) {
@@ -163,11 +199,12 @@
     }
 
     function makeLine(m) {
-        const line = el("div", "line");
+        const line = el("div", m.status ? `line ${m.status}` : "line");
         if (m.content) {
             line.append(el("span", "text", m.content));
             if (m.edited) line.append(el("span", "edited", "(изменено)"));
         }
+        if (m.status === "failed") line.append(el("div", "failed-note", "Не отправлено"));
         for (const extra of m.extras) line.append(el("div", "extra", extra));
         return line;
     }
@@ -238,16 +275,19 @@
         currentChannel = chat.channelId;
         openPanel();
 
+        maxLength = chat.maxLength || 2000;
         if (channelChanged) {
             renderHeader(chat);
             input.placeholder = chat.placeholder;
             input.value = drafts.get(chat.channelId) ?? "";
+            localNote = null;
             autosizeInput();
         } else {
             headerTitle.textContent = chat.title;
         }
 
         renderMessages(chat, channelChanged);
+        renderNote();
         if (channelChanged) input.focus();
     }
 
