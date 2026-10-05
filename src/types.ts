@@ -34,20 +34,52 @@ export interface ChatTile {
     lastMessageAt: number;
 }
 
+/** Сообщение в панели чата. Весь текст — простой (без разметки), оверлей вставляет его через textContent. */
+export interface ChatMessage {
+    id: string;
+    authorId: string;
+    authorName: string;
+    avatarUrl?: string;
+    initials: string;
+    content: string;
+    timestamp: number;
+    mine: boolean;
+    edited: boolean;
+    /** Ответ на сообщение: «Имя: начало текста». */
+    replyTo?: string;
+    /** Вложения, стикеры и т.п. одной строкой каждое. */
+    extras: string[];
+}
+
+/** Раскрытая панель чата. */
+export interface ChatPanel {
+    channelId: string;
+    title: string;
+    avatarUrl?: string;
+    initials: string;
+    placeholder: string;
+    messages: ChatMessage[];
+    loading: boolean;
+}
+
 /** Состояние, которое main пересылает в оверлей. */
 export interface OverlayState {
     tiles: ChatTile[];
     activeChannelId: string | null;
+    chat: ChatPanel | null;
 }
 
 /** Действия из оверлея в main (через preload). */
 export type OverlayAction =
     | { type: "layout"; width: number; height: number; }
-    | { type: "tileClick"; channelId: string; };
+    | { type: "tileClick"; channelId: string; }
+    | { type: "close"; };
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =
-    | { type: "tileClick"; channelId: string; };
+    | { type: "tileClick"; channelId: string; }
+    /** Свернуть панель: Esc в оверлее или клик мимо (окно потеряло фокус). */
+    | { type: "close"; };
 
 export interface MessageCreateEvent {
     channelId: string;

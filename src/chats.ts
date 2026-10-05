@@ -15,6 +15,15 @@ const DISCORD_EPOCH = 1420070400000n;
 
 /** channelId → время последнего сообщения (мс). Порядок плиток определяется этим временем. */
 const recent = new Map<string, number>();
+/** Сколько чатов помнить (с запасом над maxTiles: часть может быть скрыта настройками). */
+const MAX_REMEMBERED = 50;
+
+function remember(channelId: string, at: number) {
+    recent.set(channelId, Math.max(at, recent.get(channelId) ?? 0));
+    if (recent.size <= MAX_REMEMBERED) return;
+    const oldest = [...recent].sort((a, b) => a[1] - b[1]).slice(0, recent.size - MAX_REMEMBERED);
+    for (const [id] of oldest) recent.delete(id);
+}
 
 export function snowflakeTime(id: string) {
     return Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
@@ -72,7 +81,7 @@ export function handleMessage(message: RawMessage): boolean {
     // Свой ответ (например, из самого Discord) лишь поднимает уже существующую плитку.
     if (message.author.id === me.id) {
         if (!recent.has(channel.id)) return false;
-        recent.set(channel.id, at);
+        remember(channel.id, at);
         return true;
     }
 
@@ -83,17 +92,30 @@ export function handleMessage(message: RawMessage): boolean {
     // Чат открыт в активном окне Discord — я его и так вижу.
     if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
 
-    recent.set(channel.id, at);
+    remember(channel.id, at);
     return true;
 }
 
-/** При старте подхватить ЛС и группы, где уже есть непрочитанное. */
+/** Подхватить ЛС и группы, где уже есть непрочитанное (вызывать после загрузки данных Discord). */
 export function seedFromUnread() {
     for (const channel of ChannelStore.getSortedPrivateChannels()) {
         if (recent.has(channel.id) || !channelAllowed(channel)) continue;
         if (ReadStateStore.getMentionCount(channel.id) <= 0) continue;
         const lastId = channel.lastMessageId ?? ReadStateStore.lastMessageId(channel.id);
-        recent.set(channel.id, lastId ? snowflakeTime(lastId) : 0);
+        remember(channel.id, lastId ? snowflakeTime(lastId) : 0);
+    }
+}
+
+/** Снимок списка чатов для сохранения между перезапусками. */
+export function exportChats(): [string, number][] {
+    return [...recent];
+}
+
+export function importChats(saved: unknown) {
+    if (!Array.isArray(saved)) return;
+    for (const entry of saved) {
+        if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "number")
+            remember(entry[0], entry[1]);
     }
 }
 
@@ -105,7 +127,7 @@ export function clearChats() {
     recent.clear();
 }
 
-function userAvatarUrl(userId: string, user: User | undefined) {
+export function userAvatarUrl(userId: string, user: User | undefined) {
     if (user?.avatar) return `${CDN}/avatars/${userId}/${user.avatar}.png?size=128`;
 
     // Стандартные аватарки: у новых ников (discriminator "0") индекс считается от id.
@@ -115,7 +137,7 @@ function userAvatarUrl(userId: string, user: User | undefined) {
     return `${CDN}/embed/avatars/${index}.png`;
 }
 
-function makeInitials(name: string) {
+export function makeInitials(name: string) {
     const words = name.replace(/[#@]/g, " ").trim().split(/\s+/).filter(Boolean);
     const letters = words.length >= 2
         ? [...words[0]][0] + [...words[1]][0]
@@ -123,11 +145,11 @@ function makeInitials(name: string) {
     return letters.toUpperCase();
 }
 
-function userName(userId: string, user: User | undefined) {
+export function userName(userId: string, user: User | undefined) {
     return RelationshipStore.getNickname(userId) || user?.globalName || user?.username || "Неизвестный";
 }
 
-function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "initials"> {
+export function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "initials"> {
     if (channel.type === ChannelType.DM) {
         const userId = channel.getRecipientId() ?? channel.recipients?.[0];
         const user = userId ? UserStore.getUser(userId) : undefined;
@@ -155,24 +177,20 @@ function describe(channel: Channel): Pick<ChatTile, "title" | "avatarUrl" | "ini
     };
 }
 
-/** Собрать плитки: самые свежие первыми, не больше maxTiles. Лишние и исчезнувшие чаты забываются. */
+/** Собрать плитки: самые свежие первыми, не больше maxTiles. */
 export function buildTiles(): ChatTile[] {
     const sorted = [...recent].sort((a, b) => b[1] - a[1]);
     const tiles: ChatTile[] = [];
 
     for (const [channelId, lastMessageAt] of sorted) {
+        // Канала нет в сторе: Discord ещё не загрузил данные или канал удалён — просто не показываем.
         const channel = ChannelStore.getChannel(channelId);
-        if (!channel) {
-            recent.delete(channelId);
-            continue;
-        }
+        if (!channel) continue;
         // Отключённые настройками чаты не забываем — вернутся, если настройку включить обратно.
         if (!channelAllowed(channel)) continue;
 
-        if (tiles.length >= settings.store.maxTiles) {
-            recent.delete(channelId);
-            continue;
-        }
+        // Сверх лимита не показываем, но помним (лимит памяти — MAX_REMEMBERED).
+        if (tiles.length >= settings.store.maxTiles) break;
 
         tiles.push({
             channelId,

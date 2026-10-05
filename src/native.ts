@@ -4,14 +4,14 @@
 
 import { createHash } from "crypto";
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, screen } from "electron";
-import { mkdirSync, writeFileSync } from "fs";
+import { appendFileSync, mkdirSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 
-import overlayCss from "file://overlay/overlay.css";
-import overlayJs from "file://overlay/overlay.js?minify";
+import rawOverlayCss from "file://overlay/overlay.css";
+import rawOverlayJs from "file://overlay/overlay.js?minify";
 import preloadJs from "file://overlay/preload.js";
 
-import type { ChatTile, OverlayAction, OverlayEvent, OverlayState } from "./types";
+import type { OverlayAction, OverlayEvent, OverlayState } from "./types";
 
 const UPDATE_CHANNEL = "floating-chats:update";
 const ACTION_CHANNEL = "floating-chats:action";
@@ -25,13 +25,37 @@ const MAX_SIZE = 2000;
 const MAX_QUEUE = 100;
 
 let win: BrowserWindow | null = null;
-let state: OverlayState = { tiles: [], activeChannelId: null };
+const EMPTY_STATE: OverlayState = { tiles: [], activeChannelId: null, chat: null };
+let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
 
 let queue: OverlayEvent[] = [];
 let waiter: ((ev: OverlayEvent | null) => void) | null = null;
 
-const log = (...args: unknown[]) => console.log("[FloatingChats]", ...args);
+// HTML-парсер приводит переводы строк в <style>/<script> к \n ДО подсчёта CSP-хеша.
+// Если исходник сохранён с CRLF, хеш не совпадёт и стиль/скрипт будут заблокированы — нормализуем.
+const lf = (s: string) => s.replace(/\r\n?/g, "\n");
+const overlayCss = lf(rawOverlayCss);
+const overlayJs = lf(rawOverlayJs);
+
+function dataDir() {
+    const dir = join(app.getPath("userData"), "floatingChats");
+    mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+/** Журнал main-процесса: %APPDATA%\discord\floatingChats\main.log (консоль main без отладчика не видна). */
+function log(...args: unknown[]) {
+    console.log("[FloatingChats]", ...args);
+    try {
+        const file = join(dataDir(), "main.log");
+        try {
+            if (statSync(file).size > 1_000_000) writeFileSync(file, "");
+        } catch { }
+        const text = args.map(a => typeof a === "string" ? a : a instanceof Error ? a.stack : JSON.stringify(a)).join(" ");
+        appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`);
+    } catch { }
+}
 
 function cspHash(source: string) {
     return `'sha256-${createHash("sha256").update(source, "utf8").digest("base64")}'`;
@@ -49,15 +73,13 @@ function buildHtml() {
     return "<!doctype html><html><head><meta charset=\"utf-8\">"
         + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
         + `<style>${overlayCss}</style></head>`
-        + "<body><div id=\"root\"><div id=\"tiles\"></div></div>"
+        + "<body><div id=\"root\"><div id=\"tiles\"></div><div id=\"panel\" hidden></div></div>"
         + `<script>${overlayJs}</script></body></html>`;
 }
 
 function writePreload() {
     // Preload должен быть файлом на диске; кладём его в userData Discord при каждом старте.
-    const dir = join(app.getPath("userData"), "floatingChats");
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, "preload.js");
+    const path = join(dataDir(), "preload.js");
     writeFileSync(path, preloadJs);
     return path;
 }
@@ -118,12 +140,16 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
                 width: Math.min(Math.max(Math.ceil(width), 1), MAX_SIZE),
                 height: Math.min(Math.max(Math.ceil(height), 1), MAX_SIZE),
             };
+            log("layout", contentSize, "tiles:", state.tiles.length);
             applyBounds();
             updateVisibility();
             break;
         }
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
+            break;
+        case "close":
+            pushEvent({ type: "close" });
             break;
     }
 }
@@ -161,7 +187,21 @@ function createWindow() {
     w.setAlwaysOnTop(true, "screen-saver");
     w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     w.webContents.on("will-navigate", e => e.preventDefault());
-    w.webContents.on("did-finish-load", pushState);
+    w.webContents.on("did-finish-load", () => {
+        log("overlay loaded");
+        pushState();
+    });
+    // Диагностика: всё, что может помешать оверлею запуститься, пишем в main.log.
+    w.webContents.on("preload-error", (_e, path, error) => log("preload error", path, error));
+    w.webContents.on("did-fail-load", (_e, code, desc) => log("overlay failed to load", code, desc));
+    w.webContents.on("render-process-gone", (_e, details) => log("overlay renderer gone", details));
+    w.webContents.on("console-message", (e: any, level?: number, message?: string, line?: number) => {
+        log("overlay console:", e?.message ?? message, `(level ${e?.level ?? level}, line ${e?.lineNumber ?? line})`);
+    });
+    // Клик мимо оверлея (в любое другое окно) — свернуть панель чата.
+    w.on("blur", () => {
+        if (state.chat) pushEvent({ type: "close" });
+    });
     w.on("closed", () => {
         if (win === w) {
             win = null;
@@ -193,9 +233,26 @@ export function initOverlay(_e: IpcMainInvokeEvent) {
     log("overlay created");
 }
 
-export function setOverlayState(_e: IpcMainInvokeEvent, tiles: ChatTile[], activeChannelId: string | null) {
-    state = { tiles: Array.isArray(tiles) ? tiles : [], activeChannelId };
+export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
+    const wasOpen = !!state.chat;
+    const prevTiles = state.tiles.length;
+    state = {
+        tiles: Array.isArray(next?.tiles) ? next.tiles : [],
+        activeChannelId: next?.activeChannelId ?? null,
+        chat: next?.chat ?? null,
+    };
+    if (state.tiles.length !== prevTiles || state.chat && !wasOpen)
+        log("state: tiles", state.tiles.length, "chat", state.chat?.channelId ?? null, "window", alive(win) ? (win.isVisible() ? "visible" : "hidden") : "none");
     pushState();
+
+    if (!alive(win)) return;
+    if (state.chat && !wasOpen) {
+        // Панель открыта кликом по плитке — окно должно получить фокус для ввода.
+        win.focus();
+    } else if (!state.chat && wasOpen && win.isFocused()) {
+        // Свернули по Esc — вернуть фокус окну, которое было активно до оверлея.
+        win.blur();
+    }
 }
 
 /** Long-poll: renderer ждёт здесь следующее событие из оверлея. null — «прекрати опрос». */
@@ -214,7 +271,7 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
     if (alive(win)) win.destroy();
     win = null;
     contentSize = null;
-    state = { tiles: [], activeChannelId: null };
+    state = EMPTY_STATE;
 
     queue = [];
     waiter?.(null);

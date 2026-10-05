@@ -1,8 +1,10 @@
+import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
-import { ReadStateStore } from "@webpack/common";
+import { MessageStore, ReadStateStore, UserStore } from "@webpack/common";
 
-import { buildTiles, clearChats, handleMessage, seedFromUnread } from "./chats";
+import { buildChatPanel, ensureHistory, resetHistoryRequests } from "./chatPanel";
+import { buildTiles, clearChats, exportChats, handleMessage, importChats, seedFromUnread } from "./chats";
 import { onTilesSettingChanged, settings } from "./settings";
 import type { MessageCreateEvent, OverlayEvent } from "./types";
 
@@ -17,32 +19,77 @@ let activeChannelId: string | null = null;
 let lastSent = "";
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-function pushTiles() {
+// Список чатов переживает перезапуск Discord. Ключ — по аккаунту, чтобы не смешивать несколько аккаунтов.
+let storeKey: string | null = null;
+let lastSaved = "";
+
+const dataKey = (userId: string) => `FloatingChats_chats_${userId}`;
+
+/** Восстановить сохранённый список и подхватить непрочитанное. Нужны загруженные данные Discord. */
+async function restoreChats() {
+    const me = UserStore.getCurrentUser();
+    if (!me || !running) return;
+
+    const key = dataKey(me.id);
+    if (storeKey !== key) {
+        clearChats();
+        importChats(await DataStore.get(key));
+        if (!running) return;
+        storeKey = key;
+        lastSaved = JSON.stringify(exportChats());
+    }
+    seedFromUnread();
+    scheduleRefresh();
+}
+
+function saveChats() {
+    // До восстановления не сохраняем — иначе затрём сохранённый список пустым.
+    if (!storeKey) return;
+    const snapshot = JSON.stringify(exportChats());
+    if (snapshot === lastSaved) return;
+    lastSaved = snapshot;
+    DataStore.set(storeKey, exportChats())
+        .catch(e => logger.error("Не удалось сохранить список чатов", e));
+}
+
+function pushState() {
     if (!running) return;
 
     const tiles = buildTiles();
+    saveChats();
     if (activeChannelId && !tiles.some(t => t.channelId === activeChannelId)) activeChannelId = null;
+    const chat = activeChannelId ? buildChatPanel(activeChannelId) : null;
+    if (!chat) activeChannelId = null;
 
-    // ReadStateStore меняется на каждое сообщение в любом канале — не гоняем IPC без изменений.
-    const payload = JSON.stringify([tiles, activeChannelId]);
+    // Сторы Discord меняются на каждое сообщение в любом канале — не гоняем IPC без изменений.
+    const state = { tiles, activeChannelId, chat };
+    const payload = JSON.stringify(state);
     if (payload === lastSent) return;
     lastSent = payload;
 
-    Native.setOverlayState(tiles, activeChannelId)
+    Native.setOverlayState(state)
         .catch(e => logger.error("Не удалось обновить оверлей", e));
+}
+
+function setActive(channelId: string | null) {
+    activeChannelId = channelId;
+    if (channelId) ensureHistory(channelId);
+    pushState();
 }
 
 /** Отложенное обновление: сторы Discord обрабатывают событие раньше или позже нас — дадим им закончить. */
 function scheduleRefresh() {
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(pushTiles, 50);
+    refreshTimer = setTimeout(pushState, 50);
 }
 
 function handleOverlayEvent(ev: OverlayEvent) {
     switch (ev.type) {
         case "tileClick":
-            activeChannelId = activeChannelId === ev.channelId ? null : ev.channelId;
-            pushTiles();
+            setActive(activeChannelId === ev.channelId ? null : ev.channelId);
+            break;
+        case "close":
+            if (activeChannelId) setActive(null);
             break;
     }
 }
@@ -76,7 +123,14 @@ export default definePlugin({
     flux: {
         MESSAGE_CREATE({ message, optimistic }: MessageCreateEvent) {
             if (optimistic || !running) return;
-            if (handleMessage(message)) scheduleRefresh();
+            if (handleMessage(message)) {
+                logger.info("Плитка обновлена:", message.channel_id);
+                scheduleRefresh();
+            }
+        },
+        // Данные Discord (каналы, непрочитанное) загружены — после старта или переподключения.
+        CONNECTION_OPEN() {
+            restoreChats().catch(e => logger.error("Не удалось восстановить список чатов", e));
         },
     },
 
@@ -85,10 +139,12 @@ export default definePlugin({
         lastSent = "";
         onTilesSettingChanged.fn = scheduleRefresh;
         ReadStateStore.addChangeListener(scheduleRefresh);
+        // История открытого чата: новые, изменённые, удалённые сообщения и догрузка.
+        MessageStore.addChangeListener(scheduleRefresh);
 
         await Native.initOverlay();
-        seedFromUnread();
-        pushTiles();
+        await restoreChats();
+        pushState();
         pollOverlayEvents(++pollGeneration);
         logger.info("Плагин запущен");
     },
@@ -99,7 +155,11 @@ export default definePlugin({
         clearTimeout(refreshTimer);
         onTilesSettingChanged.fn = () => { };
         ReadStateStore.removeChangeListener(scheduleRefresh);
+        MessageStore.removeChangeListener(scheduleRefresh);
         clearChats();
+        storeKey = null;
+        lastSaved = "";
+        resetHistoryRequests();
         activeChannelId = null;
         Native.disposeOverlay();
         logger.info("Плагин остановлен");
