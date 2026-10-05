@@ -27,7 +27,7 @@ function remember(channelId: string, at: number) {
     for (const [id] of oldest) recent.delete(id);
 }
 
-export function snowflakeTime(id: string) {
+function snowflakeTime(id: string) {
     return Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
 }
 
@@ -171,7 +171,7 @@ export function clearChats() {
     reactions.clear();
 }
 
-export function userAvatarUrl(userId: string, user: User | undefined) {
+function userAvatarUrl(userId: string, user: User | undefined) {
     if (user?.avatar) return `${CDN}/avatars/${userId}/${user.avatar}.png?size=128`;
 
     // Стандартные аватарки: у новых ников (discriminator "0") индекс считается от id.
@@ -181,7 +181,7 @@ export function userAvatarUrl(userId: string, user: User | undefined) {
     return `${CDN}/embed/avatars/${index}.png`;
 }
 
-export function makeInitials(name: string) {
+function makeInitials(name: string) {
     const words = name.replace(/[#@]/g, " ").trim().split(/\s+/).filter(Boolean);
     const letters = words.length >= 2
         ? [...words[0]][0] + [...words[1]][0]
@@ -189,7 +189,7 @@ export function makeInitials(name: string) {
     return letters.toUpperCase();
 }
 
-export function userName(userId: string, user: User | undefined) {
+function userName(userId: string, user: User | undefined) {
     return RelationshipStore.getNickname(userId) || user?.globalName || user?.username || "Неизвестный";
 }
 

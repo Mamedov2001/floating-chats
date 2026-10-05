@@ -38,57 +38,20 @@ export interface ChatTile {
     lastMessageAt: number;
 }
 
-/** Сообщение в панели чата. Весь текст — простой (без разметки), оверлей вставляет его через textContent. */
-export interface ChatMessage {
-    id: string;
-    authorId: string;
-    authorName: string;
-    avatarUrl?: string;
-    initials: string;
-    content: string;
-    timestamp: number;
-    mine: boolean;
-    edited: boolean;
-    /** Ответ на сообщение: «Имя: начало текста». */
-    replyTo?: string;
-    /** Вложения, стикеры и т.п. одной строкой каждое. */
-    extras: string[];
-    /** Своё сообщение ещё отправляется или не отправилось. */
-    status?: "sending" | "failed";
-}
-
-/** Раскрытая панель чата. */
-export interface ChatPanel {
-    channelId: string;
-    title: string;
-    avatarUrl?: string;
-    initials: string;
-    placeholder: string;
-    messages: ChatMessage[];
-    loading: boolean;
-    /** Ошибка последней отправки из оверлея. */
-    error?: string;
-    /** Максимальная длина сообщения (2000, с Nitro 4000). */
-    maxLength: number;
-}
-
-/** Состояние, которое main пересылает в оверлей. */
 export type Orientation = "horizontal" | "vertical";
 
 export interface OverlayState {
     orientation: Orientation;
     showLabels: boolean;
     tiles: ChatTile[];
+    /** Чат, открытый сейчас в попауте, — его плитка подсвечена. */
     activeChannelId: string | null;
-    chat: ChatPanel | null;
 }
 
 /** Действия из оверлея в main (через preload). */
 export type OverlayAction =
     | { type: "layout"; width: number; height: number; }
     | { type: "tileClick"; channelId: string; }
-    | { type: "send"; channelId: string; content: string; }
-    | { type: "close"; }
     /** Перетаскивание виджета за ручку: экранные координаты курсора. */
     | { type: "dragStart"; x: number; y: number; }
     | { type: "dragMove"; x: number; y: number; }
@@ -96,10 +59,7 @@ export type OverlayAction =
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =
-    | { type: "tileClick"; channelId: string; }
-    | { type: "send"; channelId: string; content: string; }
-    /** Свернуть панель: Esc в оверлее или клик мимо (окно потеряло фокус). */
-    | { type: "close"; };
+    | { type: "tileClick"; channelId: string; };
 
 /** Flux-событие MESSAGE_REACTION_ADD (поля как их кладёт Discord из гейтвея). */
 export interface ReactionAddEvent {

@@ -1,4 +1,5 @@
-// ВРЕМЕННО (ветка spike/discord-popout): чат канала — настоящий интерфейс Discord в его же попауте.
+// Чат канала — настоящий интерфейс Discord в его же попауте (окне, которое Discord открывает для звонков,
+// саундборда и т.п.). Компоненты Discord ищутся по устойчивым строкам кода, а не по номерам модулей.
 //
 // Как устроено у Discord (сверено по исходникам клиента):
 //  - PopoutActions.open(key, render, features) открывает window.open и рендерит render(key) в #app-mount попаута
@@ -10,16 +11,17 @@
 //    использует chatInputType = ChatInputTypes.SIDEBAR. Историю он не грузит — это делает вызывающий.
 
 import * as DataStore from "@api/DataStore";
+import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
 import { findComponentByCodeLazy, findLazy } from "@webpack";
-import { ChannelStore, GuildStore, PopoutActions, PopoutWindowStore, React, useStateFromStores } from "@webpack/common";
+import { ChannelStore, GuildStore, MessageActions, MessageStore, PopoutActions, PopoutWindowStore, React, useStateFromStores } from "@webpack/common";
 
-import { ensureHistory } from "../chatPanel";
-import { describe } from "../chats";
-import { POPOUT_KEY } from "../constants";
-import { settings } from "../settings";
+import { describe } from "./chats";
+import { POPOUT_KEY } from "./constants";
+import { settings } from "./settings";
 
-const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("../native")>;
+const logger = new Logger("FloatingChats");
+const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("./native")>;
 
 const PopoutWindow = findComponentByCodeLazy("Missing guestWindow reference");
 const ChannelChat = findComponentByCodeLazy('location:"ChannelChat"');
@@ -38,6 +40,30 @@ const GAP = 8;
 const BLUR_CLOSE_DELAY = 250;
 const POSITION_KEY = "FloatingChats_popoutPosition";
 const STYLE_ID = "floating-chats-popout-style";
+
+const HISTORY_LIMIT = 50;
+/** Каналы, для которых уже запрошена история (чтобы не дёргать API на каждое открытие). */
+const historyRequested = new Set<string>();
+
+export function resetHistoryRequests() {
+    historyRequested.clear();
+}
+
+/** ChannelChat историю сам не грузит (это делает экран, который его показывает) — подгружаем, если её нет. */
+function ensureHistory(channelId: string) {
+    if (MessageStore.getMessages(channelId)?.ready || historyRequested.has(channelId)) return;
+    historyRequested.add(channelId);
+
+    if (typeof MessageActions?.fetchMessages !== "function") {
+        logger.warn("MessageActions.fetchMessages не найден — история не будет подгружена");
+        return;
+    }
+    try {
+        MessageActions.fetchMessages({ channelId, limit: HISTORY_LIMIT });
+    } catch (e) {
+        logger.error("Не удалось загрузить историю", channelId, e);
+    }
+}
 
 let switchChannel: ((channelId: string) => void) | null = null;
 let onClosed: (() => void) | null = null;

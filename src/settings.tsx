@@ -11,58 +11,58 @@ const refresh = () => onTilesSettingChanged.fn();
 export const settings = definePluginSettings({
     includeDMs: {
         type: OptionType.BOOLEAN,
-        description: "Личные сообщения",
+        description: "Direct messages",
         default: true,
         onChange: refresh,
     },
     includeGroupDMs: {
         type: OptionType.BOOLEAN,
-        description: "Групповые чаты",
+        description: "Group DMs",
         default: true,
         onChange: refresh,
     },
     includeMentions: {
         type: OptionType.BOOLEAN,
-        description: "Упоминания на серверах (меня, моих ролей, @everyone/@here — с учётом настроек сервера)",
+        description: "Server mentions (me, my roles, @everyone/@here — respects server notification settings)",
         default: true,
         onChange: refresh,
     },
     includeReactions: {
         type: OptionType.BOOLEAN,
-        description: "Реакции на мои сообщения",
+        description: "Reactions to my messages",
         default: true,
         onChange: refresh,
     },
     respectMuted: {
         type: OptionType.BOOLEAN,
-        description: "Не показывать заглушённые каналы, серверы и ЛС",
+        description: "Hide muted channels, servers and DMs",
         default: true,
         onChange: refresh,
     },
     hideRead: {
         type: OptionType.BOOLEAN,
-        description: "Убирать плитку, когда в чате всё прочитано (вернётся с новым сообщением)",
+        description: "Hide a tile once the chat is read (it comes back with the next message)",
         default: true,
         onChange: refresh,
     },
     showLabels: {
         type: OptionType.BOOLEAN,
-        description: "Подписи под плитками (имя, канал и сервер)",
+        description: "Show labels under tiles (name, channel and server)",
         default: true,
         onChange: refresh,
     },
     orientation: {
         type: OptionType.SELECT,
-        description: "Расположение плиток",
+        description: "Tile layout",
         options: [
-            { label: "Горизонтально", value: "horizontal", default: true },
-            { label: "Вертикально", value: "vertical" },
+            { label: "Horizontal", value: "horizontal", default: true },
+            { label: "Vertical", value: "vertical" },
         ],
         onChange: refresh,
     },
     popoutOpacity: {
         type: OptionType.SLIDER,
-        description: "Непрозрачность фона чата, %",
+        description: "Chat background opacity, %",
         markers: [40, 50, 60, 70, 80, 90, 100],
         default: 85,
         stickToMarkers: false,
@@ -71,13 +71,13 @@ export const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: () => (
             <Button size="small" variant="secondary" onClick={() => onResetPositions.fn()}>
-                Вернуть виджет и чат в угол экрана
+                Move widget and chat back to the screen corner
             </Button>
         ),
     },
     maxTiles: {
         type: OptionType.SLIDER,
-        description: "Максимум плиток",
+        description: "Maximum number of tiles",
         markers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
         default: 8,
         stickToMarkers: true,

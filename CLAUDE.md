@@ -234,8 +234,37 @@ pnpm inject           # один раз: встроить Vencord в Discord (з
 - [x] **Этап 3. Данные → плитки.** Фильтр DM/групп/упоминаний, реальные аватарки, счётчики, сортировка, лимит.
 - [x] **Этап 4. Раскрытие чата.** Клик по плитке — панель с историей канала; клик мимо / Esc — сворачивание; живое обновление при новых сообщениях.
 - [x] **Этап 5. Отправка.** Поле ввода → long-poll → `sendMessage`; отправленное сразу видно в панели.
-- [ ] **Этап 6. Полировка.** Настройки, «Открыть в Discord» (переход к каналу + фокус окна Discord), «прочитано», правый клик по плитке, анимации, корректная работа при смене разрешения/второго монитора, очистка при `stop()`.
-- [ ] **Этап 7. Надёжность.** Обработка ошибок, отсутствие утечек слушателей, проверка после обновления Discord, README с установкой.
+- [x] **Смена подхода (после этапа 5).** Своя панель чата заменена настоящим чатом Discord в его попауте
+  (см. «Чат в попауте Discord» ниже). Своя панель удалена. Сделано попутно: перетаскивание виджета и чата
+  с ограничением по монитору, ориентация плиток, подписи под плитками, реакции на мои сообщения,
+  скрытие прочитанных (BULK_ACK при открытии/закрытии), настройки на английском.
+- [ ] **Этап 6. Полировка.** «Открыть в Discord» (переход к каналу + фокус окна Discord), правый клик по плитке
+  («Убрать из списка» — `removeChat` уже есть, «Отметить прочитанным»), анимации появления плиток,
+  `hideWhenDiscordFocused`, смена разрешения/второй монитор, тексты интерфейса (✕, подсказки) на английском.
+- [ ] **Этап 7. Надёжность.** Понятная ошибка в логе, если компоненты Discord не нашлись после обновления;
+  отсутствие утечек слушателей; проверка после обновления Discord; README с установкой.
+
+### Чат в попауте Discord (`src/popoutChat.tsx`)
+
+Сверено по исходникам клиента Discord (выгрузка webpack-модулей и `core.asar`):
+- `PopoutActions.open(key, render, features)` → `window.open` → Discord рендерит `render(key)` в `#app-mount`
+  попаута в **том же** JS-контексте (сторы общие, свои `<link>`-стили Discord копирует сам).
+- Main-процесс Discord пропускает в `BrowserWindow` только `ALLOWED_FEATURES`: width/height/left/top, resizable,
+  movable, alwaysOnTop, frame, transparent, hasShadow, closable, skipTaskbar, backgroundColor, focusable…
+  Булевы кодируются `yes`/`no`. По умолчанию попаут `frame: false`, фон `#2f3136`, min 320×180.
+  `childWindow.windowKey = frameName` — по нему `native.ts` находит окно чата (`POPOUT_KEY` в `constants.ts`).
+- `PopoutWindow` (обёртка попаутов) ищется по строке `"Missing guestWindow reference"`; `withTitleBar: false`,
+  `onBlur` — как у попаута саундборда.
+- `ChannelChat` — по `location:"ChannelChat"`; для неоткрытого канала Discord сам передаёт
+  `chatInputType = ChatInputTypes.SIDEBAR` (объект с `SIDEBAR.analyticsName === "sidebar"`).
+  Обёртка — CSS-модуль с единственным классом `chat_<hash>`. Историю `ChannelChat` **не грузит** —
+  вызываем `MessageActions.fetchMessages`.
+- Фон чата берётся из `--background-gradient-chat`, `--background-base-lower`, `--background-base-lowest`;
+  они обнуляются в попауте, а полупрозрачный фон (цвет темы × `popoutOpacity`) задаёт `#app-mount`.
+- Перетаскивание виджета и чата — вручную (pointer events → main → `setPosition` с ограничением по монитору):
+  системный `-webkit-app-region: drag` не работает у `movable: false` и не ограничивается краем экрана.
+- Реакции: `MESSAGE_REACTION_ADD` содержит `messageAuthorId` (из `message_author_id` гейтвея).
+- CSS Discord можно скачать для справки: ссылки на `/assets/*.css` есть в `https://discord.com/app`.
 
 ---
 

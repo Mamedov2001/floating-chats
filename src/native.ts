@@ -26,7 +26,7 @@ const MAX_SIZE = 2000;
 const MAX_QUEUE = 100;
 
 let win: BrowserWindow | null = null;
-const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null, chat: null };
+const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, tiles: [], activeChannelId: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
 
@@ -84,7 +84,7 @@ function buildHtml() {
     return "<!doctype html><html><head><meta charset=\"utf-8\">"
         + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
         + `<style>${overlayCss}</style></head>`
-        + "<body><div id=\"root\"><div id=\"tiles\"></div><div id=\"panel\" hidden></div></div>"
+        + "<body><div id=\"root\"><div id=\"tiles\"></div></div>"
         + `<script>${overlayJs}</script></body></html>`;
 }
 
@@ -208,15 +208,6 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
             break;
-        case "send":
-            // Отправлять можно только в открытый сейчас чат; размер — с запасом над лимитом Discord.
-            if (typeof action.channelId === "string" && action.channelId === state.chat?.channelId
-                && typeof action.content === "string" && action.content.trim() && action.content.length <= 4000)
-                pushEvent({ type: "send", channelId: action.channelId, content: action.content });
-            break;
-        case "close":
-            pushEvent({ type: "close" });
-            break;
         case "dragStart": {
             if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
             const b = win.getBounds();
@@ -282,10 +273,6 @@ function createWindow() {
     w.webContents.on("console-message", (e: any, level?: number, message?: string, line?: number) => {
         log("overlay console:", e?.message ?? message, `(level ${e?.level ?? level}, line ${e?.lineNumber ?? line})`);
     });
-    // Клик мимо оверлея (в любое другое окно) — свернуть панель чата.
-    w.on("blur", () => {
-        if (state.chat) pushEvent({ type: "close" });
-    });
     w.on("closed", () => {
         if (win === w) {
             win = null;
@@ -319,27 +306,16 @@ export function initOverlay(_e: IpcMainInvokeEvent) {
 }
 
 export function setOverlayState(_e: IpcMainInvokeEvent, next: OverlayState) {
-    const wasOpen = !!state.chat;
     const prevTiles = state.tiles.length;
     state = {
         orientation: next?.orientation === "vertical" ? "vertical" : "horizontal",
         showLabels: next?.showLabels !== false,
         tiles: Array.isArray(next?.tiles) ? next.tiles : [],
         activeChannelId: next?.activeChannelId ?? null,
-        chat: next?.chat ?? null,
     };
-    if (state.tiles.length !== prevTiles || state.chat && !wasOpen)
-        log("state: tiles", state.tiles.length, "chat", state.chat?.channelId ?? null, "window", alive(win) ? (win.isVisible() ? "visible" : "hidden") : "none");
+    if (state.tiles.length !== prevTiles)
+        log("state: tiles", state.tiles.length, "window", alive(win) ? (win.isVisible() ? "visible" : "hidden") : "none");
     pushState();
-
-    if (!alive(win)) return;
-    if (state.chat && !wasOpen) {
-        // Панель открыта кликом по плитке — окно должно получить фокус для ввода.
-        win.focus();
-    } else if (!state.chat && wasOpen && win.isFocused()) {
-        // Свернули по Esc — вернуть фокус окну, которое было активно до оверлея.
-        win.blur();
-    }
 }
 
 /** Long-poll: renderer ждёт здесь следующее событие из оверлея. null — «прекрати опрос». */
