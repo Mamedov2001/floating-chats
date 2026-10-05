@@ -1,0 +1,10 @@
+{
+    // Плагин живёт вне дерева Vencord (подключён junction'ом в src/userplugins),
+    // поэтому алиасы @utils, @webpack и т.д. берём из tsconfig Vencord.
+    // Пакеты (@vencord/discord-types и др.) резолвятся через junction node_modules → ../Vencord/node_modules.
+    "extends": "../Vencord/tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".."
+    },
+    "include": ["src/**/*", "../Vencord/src/**/*.d.ts"]
+}
