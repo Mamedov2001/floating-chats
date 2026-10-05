@@ -26,7 +26,11 @@ function remember(channelId: string, at: number) {
     recent.set(channelId, Math.max(at, recent.get(channelId) ?? 0));
     if (recent.size <= MAX_REMEMBERED) return;
     const oldest = [...recent].sort((a, b) => a[1] - b[1]).slice(0, recent.size - MAX_REMEMBERED);
-    for (const [id] of oldest) recent.delete(id);
+    for (const [id] of oldest) {
+        recent.delete(id);
+        senders.delete(id);
+        reactions.delete(id);
+    }
 }
 
 function snowflakeTime(id: string) {
@@ -152,16 +156,54 @@ export function seedFromUnread() {
     }
 }
 
-/** Снимок списка чатов для сохранения между перезапусками. */
-export function exportChats(): [string, number][] {
-    return [...recent];
+/** Что сохраняется о чате помимо времени: отправитель для карточки и счётчик реакций (их Discord не хранит). */
+interface SavedExtra {
+    from?: TileSender;
+    reactions?: number;
 }
 
+/** Снимок списка чатов для сохранения между перезапусками: [channelId, время, доп. данные?]. */
+export function exportChats(): [string, number, SavedExtra?][] {
+    return [...recent].map(([id, at]) => {
+        const extra: SavedExtra = {};
+        const from = senders.get(id);
+        const count = reactions.get(id);
+        if (from) extra.from = from;
+        if (count) extra.reactions = count;
+        return from || count ? [id, at, extra] : [id, at];
+    });
+}
+
+const optionalString = (v: unknown) => v === undefined || typeof v === "string";
+
+/** Сохранённый отправитель пришёл из хранилища — проверяем форму, прежде чем показывать. */
+function parseSender(v: unknown): TileSender | undefined {
+    if (!v || typeof v !== "object") return undefined;
+    const s = v as Record<string, unknown>;
+    if (typeof s.userId !== "string" || typeof s.name !== "string") return undefined;
+    if (![s.username, s.avatarUrl, s.emoji, s.preview].every(optionalString)) return undefined;
+    return {
+        userId: s.userId,
+        name: s.name,
+        username: s.username as string | undefined,
+        avatarUrl: s.avatarUrl as string | undefined,
+        emoji: s.emoji as string | undefined,
+        preview: s.preview as string | undefined,
+    };
+}
+
+/** Восстановить список. Понимает и старый формат [channelId, время] без доп. данных. */
 export function importChats(saved: unknown) {
     if (!Array.isArray(saved)) return;
     for (const entry of saved) {
-        if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "number")
-            remember(entry[0], entry[1]);
+        if (!Array.isArray(entry) || typeof entry[0] !== "string" || typeof entry[1] !== "number") continue;
+        const [id, at, extra] = entry as [string, number, Record<string, unknown> | undefined];
+        remember(id, at);
+
+        const from = parseSender(extra?.from);
+        if (from && !senders.has(id)) senders.set(id, from);
+        const count = extra?.reactions;
+        if (typeof count === "number" && count > 0 && !reactions.has(id)) reactions.set(id, Math.floor(count));
     }
 }
 
