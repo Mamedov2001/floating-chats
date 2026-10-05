@@ -22,6 +22,33 @@ export interface RawMessage {
     embeds: unknown[];
 }
 
+/** Плитка чата в оверлее. Порядок в массиве: первый элемент — самый свежий (рисуется у края экрана). */
+export interface ChatTile {
+    channelId: string;
+    title: string;
+    /** URL аватара; допускается только https://cdn.discordapp.com (ограничено CSP оверлея). */
+    avatarUrl?: string;
+    /** Подпись-заглушка, если аватара нет или он не загрузился. */
+    initials: string;
+    unread: number;
+    lastMessageAt: number;
+}
+
+/** Состояние, которое main пересылает в оверлей. */
+export interface OverlayState {
+    tiles: ChatTile[];
+    activeChannelId: string | null;
+}
+
+/** Действия из оверлея в main (через preload). */
+export type OverlayAction =
+    | { type: "layout"; width: number; height: number; }
+    | { type: "tileClick"; channelId: string; };
+
+/** События из main в renderer Discord (long-poll через nextEvent). */
+export type OverlayEvent =
+    | { type: "tileClick"; channelId: string; };
+
 export interface MessageCreateEvent {
     channelId: string;
     message: RawMessage;

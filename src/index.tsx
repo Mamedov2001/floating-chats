@@ -1,11 +1,56 @@
 import { Logger } from "@utils/Logger";
-import definePlugin from "@utils/types";
+import definePlugin, { PluginNative } from "@utils/types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import { ChannelStore, GuildStore, UserStore } from "@webpack/common";
 
-import type { MessageCreateEvent } from "./types";
+import type { ChatTile, MessageCreateEvent, OverlayEvent } from "./types";
 
 const logger = new Logger("FloatingChats", "#5865f2");
+const Native = VencordNative.pluginHelpers.FloatingChats as PluginNative<typeof import("./native")>;
+
+// Этап 2: тестовые плитки, пока нет реальных данных. Первая — самая свежая (у правого края).
+const TEST_TILES: ChatTile[] = [
+    { channelId: "test-da", title: "Дмитрий А.", initials: "ДА", unread: 1, lastMessageAt: 5 },
+    { channelId: "test-ol", title: "Ольга", initials: "ОЛ", unread: 12, lastMessageAt: 4 },
+    { channelId: "test-ti", title: "Тимур И.", initials: "ТИ", unread: 0, lastMessageAt: 3 },
+    { channelId: "test-al", title: "Алексей", initials: "АЛ", avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png", unread: 3, lastMessageAt: 2 },
+    { channelId: "test-gd", title: "Game Dev · #general", initials: "GD", avatarUrl: "https://cdn.discordapp.com/embed/avatars/9999.png", unread: 0, lastMessageAt: 1 },
+];
+
+// Номер текущего цикла опроса: при stop()/повторном start() старый цикл видит чужой номер и выходит,
+// иначе два цикла бесконечно сбрасывали бы ожидание друг друга в nextEvent.
+let pollGeneration = 0;
+let activeChannelId: string | null = null;
+
+function handleOverlayEvent(ev: OverlayEvent) {
+    switch (ev.type) {
+        case "tileClick":
+            logger.info("Клик по плитке", ev.channelId);
+            activeChannelId = activeChannelId === ev.channelId ? null : ev.channelId;
+            Native.setOverlayState(TEST_TILES, activeChannelId);
+            break;
+    }
+}
+
+async function pollOverlayEvents(generation: number) {
+    while (generation === pollGeneration) {
+        let ev: OverlayEvent | null;
+        try {
+            ev = await Native.nextEvent();
+        } catch (e) {
+            logger.error("nextEvent упал, останавливаю опрос", e);
+            return;
+        }
+        if (generation !== pollGeneration) return;
+        if (ev) {
+            try {
+                handleOverlayEvent(ev);
+            } catch (e) {
+                logger.error("Ошибка обработки события оверлея", ev, e);
+            }
+        }
+    }
+}
 
 function channelTypeName(type: number) {
     switch (type) {
@@ -48,11 +93,16 @@ export default definePlugin({
         },
     },
 
-    start() {
+    async start() {
         logger.info("Плагин запущен");
+        await Native.initOverlay();
+        await Native.setOverlayState(TEST_TILES, activeChannelId);
+        pollOverlayEvents(++pollGeneration);
     },
 
     stop() {
+        pollGeneration++;
+        Native.disposeOverlay();
         logger.info("Плагин остановлен");
     },
 });

@@ -185,6 +185,13 @@ Vencord/                          ← клон https://github.com/Vendicated/Ven
   (смотреть только строки с `floating-chats`).
 - В `MESSAGE_CREATE` приходит сырой объект API (snake_case, `author` — простой объект), а не
   запись `Message` из `MessageStore` — см. `RawMessage` в `src/types.ts`.
+- Vencord патчит `BrowserWindow` и внедряет себя в любое окно, у которого заданы **и `preload`, и `title`**.
+  Окну оверлея `title` не задавать.
+- `native.ts` импортируется в main при старте Discord даже при выключенном плагине, и каждый его экспорт
+  становится IPC-обработчиком — экспортировать только функции, окно создавать в `initOverlay()`.
+- Файлы оверлея подключаются через `import x from "file://overlay/…"` (плагин сборки Vencord);
+  HTML собирается в `native.ts`, CSP разрешает скрипт и стиль только по sha256-хешу.
+- Скриншот прозрачного окна через `Graphics.CopyFromScreen` пустой — нужен `BitBlt` с флагом `CAPTUREBLT`.
 - Неинтерактивный inject (Discord должен быть закрыт): `node scripts/runInstaller.mjs -- -install -branch stable`
   (из папки Vencord; после обновления Discord — то же с `-repair`).
 
@@ -202,7 +209,11 @@ pnpm inject           # один раз: встроить Vencord в Discord (з
 ```
 
 - Изменения в `index.tsx` → пересборка → в Discord **Ctrl+R**.
-- Изменения в `native.ts` → пересборка → **полный перезапуск Discord** (выход из трея).
+- Изменения в `native.ts` **и в `overlay/*`** (они встраиваются в main-бандл `dist/patcher.js`) →
+  пересборка → полный перезапуск Discord: в консоли DevTools Discord выполнить `DiscordNative.app.relaunch()`.
+  **Не убивать Discord принудительно** (`taskkill /F`, `Stop-Process -Force`): при этом может не сохраниться
+  Local Storage, и Discord выкидывает из аккаунта.
+- Renderer-бандл для Discord — `dist/renderer.js` (а `vencordDesktopRenderer.js` — для Vesktop, не путать).
 - Включить плагин: Настройки Discord → Vencord → Plugins → FloatingChats.
 - DevTools Discord: **Ctrl+Shift+I** (renderer-логи). Логи main-процесса — запустить Discord из консоли.
 - После обновлений Discord может понадобиться снова `pnpm inject`.
@@ -212,8 +223,8 @@ pnpm inject           # один раз: встроить Vencord в Discord (з
 ## 6. План работ (этапы)
 
 - [x] **Этап 0. Окружение.** Node.js LTS, pnpm, Git; клон Vencord; `pnpm build` + `pnpm inject`; Vencord виден в настройках Discord.
-- [ ] **Этап 1. Скелет плагина.** `index.tsx` с `definePlugin`, плагин включается, в консоль пишется каждое входящее `MESSAGE_CREATE` (автор, канал, тип канала, текст).
-- [ ] **Этап 2. Окно поверх всех окон.** `native.ts` создаёт прозрачное окно в правом верхнем углу с тестовыми плитками; окно поверх всех программ, не в панели задач, не крадёт фокус.
+- [x] **Этап 1. Скелет плагина.** `index.tsx` с `definePlugin`, плагин включается, в консоль пишется каждое входящее `MESSAGE_CREATE` (автор, канал, тип канала, текст).
+- [x] **Этап 2. Окно поверх всех окон.** `native.ts` создаёт прозрачное окно в правом верхнем углу с тестовыми плитками; окно поверх всех программ, не в панели задач, не крадёт фокус.
 - [ ] **Этап 3. Данные → плитки.** Фильтр DM/групп/упоминаний, реальные аватарки, счётчики, сортировка, лимит.
 - [ ] **Этап 4. Раскрытие чата.** Клик по плитке — панель с историей канала; клик мимо / Esc — сворачивание; живое обновление при новых сообщениях.
 - [ ] **Этап 5. Отправка.** Поле ввода → long-poll → `sendMessage`; отправленное сразу видно в панели.
