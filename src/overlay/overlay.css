@@ -246,19 +246,24 @@ body.vertical .hover-card.shown {
     line-height: 15px;
 }
 
-/* Начало сообщения: до трёх строк. */
+/* Начало сообщения: подложка с отступами... */
 .hc-preview {
-    display: -webkit-box;
-    overflow: hidden;
     padding: 6px 8px;
     border-radius: 4px;
     background: rgb(255 255 255 / 4%);
+}
+
+/* ...и сам текст: до четырёх строк, дальше многоточие. Обрезка на элементе без отступов —
+   иначе пятая строка выглядывает в нижний padding. */
+.hc-preview-text {
+    display: -webkit-box;
+    overflow: hidden;
     color: var(--text);
     font-size: 13px;
     line-height: 17px;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 4;
 }
 
 /* Заглушка «нет новых сообщений»: пунктирная пустая плитка, неяркая, чтобы не отвлекать. */

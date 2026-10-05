@@ -266,7 +266,12 @@
         head.append(avatar, names);
 
         const nodes = [head, el("div", "hc-action", senderAction(tile, from))];
-        if (from.preview) nodes.push(el("div", "hc-preview", from.preview));
+        if (from.preview) {
+            // Подложка и обрезка строк — на разных элементах: иначе следующая строка видна в нижнем отступе.
+            const preview = el("div", "hc-preview");
+            preview.append(el("div", "hc-preview-text", from.preview));
+            nodes.push(preview);
+        }
         hoverCard.replaceChildren(...nodes);
     }
 
