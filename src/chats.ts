@@ -3,18 +3,20 @@
 import type { Channel, User } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    ChannelStore, FluxDispatcher, GuildMemberStore, GuildStore, MessageStore, ReadStateStore, RelationshipStore,
+    ChannelStore, FluxDispatcher, GuildMemberStore, GuildRoleStore, GuildStore, MessageStore, ReadStateStore, RelationshipStore,
     SelectedChannelStore, UserGuildSettingsStore, UserStore, WindowStore
 } from "@webpack/common";
 
 import { settings } from "./settings";
-import type { ChatTile, RawMessage, ReactionAddEvent } from "./types";
+import type { ChatTile, RawMessage, RawUser, ReactionAddEvent, TileSender } from "./types";
 
 const CDN = "https://cdn.discordapp.com";
 const DISCORD_EPOCH = 1420070400000n;
 
 /** channelId → время последнего сообщения (мс). Порядок плиток определяется этим временем. */
 const recent = new Map<string, number>();
+/** Кто последним поднял плитку канала (тегнул, написал в группе, поставил реакцию). */
+const senders = new Map<string, TileSender>();
 /** Новые реакции на мои сообщения по каналам: Discord их в непрочитанное не считает — считаем сами. */
 const reactions = new Map<string, number>();
 /** Сколько чатов помнить (с запасом над maxTiles: часть может быть скрыта настройками). */
@@ -94,6 +96,13 @@ export function handleMessage(message: RawMessage): boolean {
     // Чат открыт в активном окне Discord — я его и так вижу.
     if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
 
+    // В обычном ЛС отправитель — это и есть плитка; в группе и на сервере покажем, кто именно.
+    if (channel.type === ChannelType.DM) senders.delete(channel.id);
+    else senders.set(channel.id, {
+        ...senderOf(channel, message.author.id, message.author),
+        preview: messagePreview(channel, message.content, message.attachments?.length ?? 0),
+    });
+
     remember(channel.id, at);
     return true;
 }
@@ -117,6 +126,13 @@ export function handleReaction(ev: ReactionAddEvent): boolean {
     if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
 
     reactions.set(channel.id, (reactions.get(channel.id) ?? 0) + 1);
+    // Превью — моё сообщение, на которое поставили реакцию (если оно загружено).
+    const reacted = MessageStore.getMessage(ev.channelId, ev.messageId);
+    senders.set(channel.id, {
+        ...senderOf(channel, ev.userId),
+        emoji: emojiText(ev.emoji),
+        preview: reacted ? messagePreview(channel, reacted.content, reacted.attachments?.length ?? 0) : undefined,
+    });
     remember(channel.id, Date.now());
     return true;
 }
@@ -152,6 +168,7 @@ export function importChats(saved: unknown) {
 /** Отметить канал прочитанным (как кнопка «прочитать всё» в Vencord: BULK_ACK по последнему сообщению). */
 export function markRead(channelId: string) {
     clearReactions(channelId);
+    senders.delete(channelId);
     if (!ReadStateStore.hasUnread(channelId)) return;
     const messageId = ReadStateStore.lastMessageId(channelId);
     if (!messageId) return;
@@ -165,14 +182,17 @@ export function markRead(channelId: string) {
 export function removeChat(channelId: string) {
     recent.delete(channelId);
     reactions.delete(channelId);
+    senders.delete(channelId);
 }
 
 export function clearChats() {
     recent.clear();
     reactions.clear();
+    senders.clear();
 }
 
-function userAvatarUrl(userId: string, user: User | undefined) {
+/** URL аватара по id и полям avatar/discriminator — подходит и для User из стора, и для сырого автора из события. */
+function userAvatarUrl(userId: string, user: Pick<User, "avatar" | "discriminator"> | Pick<RawUser, "avatar" | "discriminator"> | undefined) {
     if (user?.avatar) return `${CDN}/avatars/${userId}/${user.avatar}.png?size=128`;
 
     // Стандартные аватарки: у новых ников (discriminator "0") индекс считается от id.
@@ -180,6 +200,43 @@ function userAvatarUrl(userId: string, user: User | undefined) {
         ? Number(user.discriminator) % 5
         : Number((BigInt(userId) >> 22n) % 6n);
     return `${CDN}/embed/avatars/${index}.png`;
+}
+
+/** Карточка отправителя: имя с учётом ника на сервере, аватар. raw — автор из события (если стор ещё не знает). */
+function senderOf(channel: Channel, userId: string, raw?: RawUser): TileSender {
+    const user = UserStore.getUser(userId);
+    const nick = channel.guild_id
+        ? GuildMemberStore.getNick(channel.guild_id, userId)
+        : RelationshipStore.getNickname(userId);
+    const name = nick || raw?.global_name || user?.globalName || raw?.username || user?.username || "Unknown user";
+    return { userId, name, username: raw?.username ?? user?.username, avatarUrl: userAvatarUrl(userId, user ?? raw) };
+}
+
+const PREVIEW_LENGTH = 160;
+
+/** Начало сообщения простым текстом: разметка упоминаний Discord (<@id>, <#id>, <:emoji:id>) — в читаемый вид. */
+function messagePreview(channel: Channel, content: string | undefined, attachments: number) {
+    const guildId = channel.guild_id;
+    const text = (content ?? "")
+        .replace(/<@!?(\d+)>/g, (_, id: string) => {
+            const nick = guildId ? GuildMemberStore.getNick(guildId, id) : null;
+            const user = UserStore.getUser(id);
+            return "@" + (nick || user?.globalName || user?.username || "user");
+        })
+        .replace(/<@&(\d+)>/g, (_, id: string) => "@" + ((guildId && GuildRoleStore.getRole(guildId, id)?.name) || "role"))
+        .replace(/<#(\d+)>/g, (_, id: string) => "#" + (ChannelStore.getChannel(id)?.name ?? "channel"))
+        .replace(/<a?(:\w+:)\d+>/g, "$1")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!text) return attachments ? (attachments > 1 ? `📎 ${attachments} attachments` : "📎 Attachment") : undefined;
+    return text.length > PREVIEW_LENGTH ? text.slice(0, PREVIEW_LENGTH - 1) + "…" : text;
+}
+
+/** Эмодзи реакции текстом: юникод как есть, кастомный — :name:. */
+function emojiText(emoji: ReactionAddEvent["emoji"]) {
+    if (!emoji?.name) return undefined;
+    return emoji.id ? `:${emoji.name}:` : emoji.name;
 }
 
 function makeInitials(name: string) {
@@ -252,6 +309,7 @@ export function buildTiles(keepChannelId: string | null = null): ChatTile[] {
             ...describe(channel),
             unread,
             lastMessageAt,
+            from: senders.get(channelId),
         });
     }
     return tiles;

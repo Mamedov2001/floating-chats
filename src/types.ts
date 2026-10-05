@@ -4,6 +4,7 @@ export interface RawUser {
     username: string;
     global_name?: string | null;
     avatar: string | null;
+    discriminator?: string;
     bot?: boolean;
 }
 
@@ -34,8 +35,21 @@ export interface ChatTile {
     name: string;
     /** Вторая строка подписи: сервер (для ЛС и групп нет). */
     context?: string;
+    /** Кто поднял плитку: тегнул на сервере, написал в группе или поставил реакцию. Для обычных ЛС нет. */
+    from?: TileSender;
     unread: number;
     lastMessageAt: number;
+}
+
+export interface TileSender {
+    userId: string;
+    name: string;
+    username?: string;
+    avatarUrl?: string;
+    /** Эмодзи, если плитку подняла реакция. */
+    emoji?: string;
+    /** Начало сообщения (для реакции — моего сообщения, на которое её поставили), простым текстом. */
+    preview?: string;
 }
 
 export type Orientation = "horizontal" | "vertical";
@@ -76,6 +90,7 @@ export interface ReactionAddEvent {
     messageId: string;
     userId: string;
     optimistic?: boolean;
+    emoji?: { id?: string | null; name?: string | null; };
     /** Автор сообщения, на которое поставили реакцию (message_author_id из гейтвея). */
     messageAuthorId?: string;
 }

@@ -12,6 +12,8 @@
 
 html,
 body {
+    width: 100%;
+    height: 100%;
     margin: 0;
     padding: 0;
     background: transparent;
@@ -19,6 +21,15 @@ body {
     user-select: none;
     font-family: "gg sans", "Segoe UI", sans-serif;
     color: var(--text);
+}
+
+/* Содержимое прижато к правому краю окна: окно привязано правым верхним углом и растёт влево,
+   поэтому при изменении ширины (новая плитка, карточка человека, меню) ничего не прыгает,
+   пока main не подвинет окно. */
+body {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
 }
 
 #root {
@@ -29,7 +40,7 @@ body {
     padding: var(--pad);
 }
 
-/* Вертикально: столбик плиток справа, меню — слева от него. */
+/* Вертикально: столбик плиток справа, карточка человека и меню — слева от него. */
 body.vertical #root {
     flex-direction: row-reverse;
     align-items: flex-start;
@@ -109,6 +120,145 @@ body.vertical .grip svg {
         opacity: 0;
         transform: scale(0.6);
     }
+}
+
+/* Значок отправителя в левом нижнем углу плитки. */
+.from-badge {
+    position: absolute;
+    bottom: -4px;
+    left: -4px;
+    width: 20px;
+    height: 20px;
+    box-sizing: border-box;
+    border: 2px solid var(--tile);
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.from-badge[hidden] {
+    display: none;
+}
+
+.from-badge img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    visibility: hidden;
+}
+
+.from-badge img.loaded {
+    visibility: visible;
+}
+
+/* ---------- Карточка человека при наведении (в стиле мини-профиля Discord) ---------- */
+
+.hover-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 240px;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgb(17 18 20 / 96%);
+    box-shadow: 0 8px 16px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 255 255 / 4%);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.14s ease, transform 0.14s ease;
+    pointer-events: none;
+}
+
+.hover-card[hidden] {
+    display: none;
+}
+
+.hover-card.shown {
+    opacity: 1;
+    transform: none;
+}
+
+body.vertical .hover-card {
+    transform: translateX(4px);
+}
+
+body.vertical .hover-card.shown {
+    transform: none;
+}
+
+.hc-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hc-avatar {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.hc-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    visibility: hidden;
+}
+
+.hc-avatar img.loaded {
+    visibility: visible;
+}
+
+.hc-names {
+    min-width: 0;
+}
+
+.hc-username {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Имя целиком — ради него карточка и открывается: переносится, а не обрезается. */
+.hc-name {
+    overflow-wrap: anywhere;
+    color: #f2f3f5;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 19px;
+}
+
+.hc-username {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 15px;
+}
+
+.hc-action {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 15px;
+}
+
+/* Начало сообщения: до трёх строк. */
+.hc-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: rgb(255 255 255 / 4%);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 17px;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
 }
 
 /* Заглушка «нет новых сообщений»: пунктирная пустая плитка, неяркая, чтобы не отвлекать. */

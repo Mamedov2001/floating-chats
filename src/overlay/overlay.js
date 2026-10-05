@@ -152,7 +152,8 @@
         const tileEl = el("div", "tile");
         const initials = el("div", "initials");
         initials.style.background = colorFor(channelId);
-        tileEl.append(initials, el("div", "badge"));
+        // Значок отправителя в углу плитки — подсказка, что при наведении можно узнать, кто это.
+        tileEl.append(initials, el("div", "badge"), el("div", "from-badge"));
 
         const label = el("div", "tile-label");
         label.append(el("span", "label-name"), el("span", "label-context"));
@@ -161,8 +162,11 @@
         item.addEventListener("click", () => api.send({ type: "tileClick", channelId }));
         item.addEventListener("contextmenu", e => {
             e.preventDefault();
+            hideHoverCard();
             openMenu(channelId, item);
         });
+        item.addEventListener("mouseenter", () => showHoverCard(channelId, item));
+        item.addEventListener("mouseleave", hideHoverCard);
         return item;
     }
 
@@ -183,6 +187,24 @@
         const context = label.querySelector(".label-context");
         context.textContent = tile.context ?? "";
         context.hidden = !tile.context;
+
+        updateSender(item, tile.from);
+    }
+
+    /** Круглый аватар отправителя (значок в углу плитки или в карточке): цветной фон, картинка поверх. */
+    function setSenderAvatar(box, from) {
+        box.style.background = colorFor(from.userId);
+        const url = validAvatar(from.avatarUrl) ? from.avatarUrl : "";
+        if (box.dataset.avatar === url) return;
+        box.dataset.avatar = url;
+        box.replaceChildren();
+        if (url) box.append(avatarImg(url));
+    }
+
+    function updateSender(item, from) {
+        const badge = item.querySelector(".from-badge");
+        badge.hidden = !from;
+        if (from) setSenderAvatar(badge, from);
     }
 
     function renderTiles() {
@@ -202,11 +224,88 @@
         if (menuChannel && !seen.has(menuChannel)) closeMenu();
         // Перестановка существующих узлов не перезагружает картинки. Ручка — в дальнем от угла конце.
         tilesEl.replaceChildren(...els, grip);
+        if (hoverChannel) refreshHoverCard();
+    }
+
+    // Карточка человека и меню — часть #root (а не всплывающий слой): окно виджета на время их показа
+    // вырастает под них (вниз или влево от угла привязки), а сами плитки не сдвигаются.
+    // Выровнять по плитке: горизонтально — под ней правым краем, вертикально — слева, верхним краем.
+    function alignToTile(elem, tileItem) {
+        elem.style.marginRight = elem.style.marginTop = "0px";
+        const pad = parseFloat(getComputedStyle(root).paddingTop) || 0;
+        const r = root.getBoundingClientRect(), t = tileItem.getBoundingClientRect();
+        if (state.orientation === "vertical") elem.style.marginTop = `${Math.max(0, t.top - r.top - pad)}px`;
+        else elem.style.marginRight = `${Math.max(0, r.right - pad - t.right)}px`;
+    }
+
+    // ---------- Карточка человека при наведении ----------
+
+    const hoverCard = el("div", "hover-card");
+    hoverCard.hidden = true;
+    root.append(hoverCard);
+    let hoverChannel = null;
+    let hoverItem = null;
+
+    /** Что произошло — строка под именем. */
+    function senderAction(tile, from) {
+        if (from.emoji) return `Reacted ${from.emoji}`;
+        if (tile.context) return `Mentioned you in ${tile.name} · ${tile.context}`;
+        return `Wrote in ${tile.name}`;
+    }
+
+    function fillHoverCard(tile) {
+        const from = tile.from;
+        const avatar = el("div", "hc-avatar");
+        setSenderAvatar(avatar, from);
+
+        const names = el("div", "hc-names");
+        names.append(el("div", "hc-name", from.name));
+        if (from.username && from.username !== from.name) names.append(el("div", "hc-username", `@${from.username}`));
+
+        const head = el("div", "hc-head");
+        head.append(avatar, names);
+
+        const nodes = [head, el("div", "hc-action", senderAction(tile, from))];
+        if (from.preview) nodes.push(el("div", "hc-preview", from.preview));
+        hoverCard.replaceChildren(...nodes);
+    }
+
+    function showHoverCard(channelId, tileItem) {
+        if (!menu.hidden) return;
+        const tile = state.tiles.find(t => t.channelId === channelId);
+        if (!tile?.from) return;
+
+        hoverChannel = channelId;
+        hoverItem = tileItem;
+        fillHoverCard(tile);
+        hoverCard.hidden = false;
+        alignToTile(hoverCard, tileItem);
+        // Класс .shown — со следующего кадра, чтобы сработал transition появления.
+        requestAnimationFrame(() => {
+            if (hoverChannel === channelId) hoverCard.classList.add("shown");
+        });
+    }
+
+    function hideHoverCard() {
+        if (hoverCard.hidden) return;
+        hoverCard.hidden = true;
+        hoverCard.classList.remove("shown");
+        hoverChannel = hoverItem = null;
+    }
+
+    /** Состояние обновилось, пока карточка открыта: новые данные, или плитка/отправитель пропали. */
+    function refreshHoverCard() {
+        const tile = state.tiles.find(t => t.channelId === hoverChannel);
+        if (!tile?.from || !hoverItem?.isConnected) {
+            hideHoverCard();
+            return;
+        }
+        fillHoverCard(tile);
+        alignToTile(hoverCard, hoverItem);
     }
 
     // ---------- Меню по правому клику ----------
 
-    // Меню — часть #root (а не всплывающий слой): так окно виджета на время меню вырастает под него.
     const menu = el("div", "menu");
     menu.hidden = true;
     root.append(menu);
@@ -234,13 +333,7 @@
             menuItem("Remove from list", "remove", { danger: true }),
         );
         menu.hidden = false;
-
-        // Выровнять меню по плитке: горизонтально — под ней правым краем, вертикально — слева, верхним краем.
-        menu.style.marginRight = menu.style.marginTop = "0px";
-        const pad = parseFloat(getComputedStyle(root).paddingTop) || 0;
-        const r = root.getBoundingClientRect(), t = tileItem.getBoundingClientRect();
-        if (state.orientation === "vertical") menu.style.marginTop = `${Math.max(0, t.top - r.top - pad)}px`;
-        else menu.style.marginRight = `${Math.max(0, r.right - pad - t.right)}px`;
+        alignToTile(menu, tileItem);
     }
 
     function closeMenu() {
@@ -257,6 +350,8 @@
         if (e.key === "Escape") closeMenu();
     });
     window.addEventListener("blur", closeMenu);
+    // Курсор ушёл из окна виджета, минуя mouseleave плитки (например, окно сжалось под ним).
+    document.documentElement.addEventListener("mouseleave", hideHoverCard);
 
     // ---------- Размер окна ----------
 

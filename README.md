@@ -17,6 +17,8 @@ and reply without switching to Discord.
   attachments and the typing indicator all work because it is Discord's own chat component.
 - The chat window closes when you click elsewhere. Read chats disappear from the tiles and come back
   with the next message.
+- **Hover a tile** to see who pinged you, wrote in the group or reacted: a small card with their avatar,
+  name, what happened (`Mentioned you in #channel`, `Reacted 😂`) and the start of the message.
 - **Right-click a tile**: Mark as read, Open in Discord, Remove from list.
 - **Drag** the widget by its handle and the chat by its header. Both remember their position and
   can't be dragged off the screen.
