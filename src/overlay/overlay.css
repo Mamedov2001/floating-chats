@@ -224,27 +224,19 @@ body.vertical .hover-card.shown {
     visibility: visible;
 }
 
-/* Имя и действие одним текстом; длинное имя переносится, а не обрезается. */
-.hc-text {
+/* Имя целиком: длинное переносится, а не обрезается. */
+.hc-name {
     flex: 1;
     min-width: 0;
+    color: #f2f3f5;
     font-size: 13px;
+    font-weight: 600;
     line-height: 17px;
     overflow-wrap: anywhere;
 }
 
-.hc-name {
-    color: #f2f3f5;
-    font-weight: 600;
-}
-
-.hc-action {
-    color: var(--text);
-}
-
 .hc-time {
     flex: none;
-    align-self: flex-start;
     color: var(--muted);
     font-size: 11px;
     line-height: 17px;

@@ -17,9 +17,9 @@ and reply without switching to Discord.
   attachments and the typing indicator all work because it is Discord's own chat component.
 - The chat window closes when you click elsewhere. Read chats disappear from the tiles and come back
   with the next message.
-- **Hover a tile** to see everything that happened in the chat since you last read it: a list of who
-  mentioned you, replied to you, mentioned your role or everyone, wrote in the group or reacted, with times.
-  Repeated actions are grouped (`Alex reacted 👍 ×3`). Message text is not shown.
+- **Hover a tile** to see who has been active in the chat since you last read it (mentioned or replied
+  to you, wrote in the group, reacted): each person once, with the time of their latest action, newest first.
+  Neither the message text nor the kind of action is shown.
 - **Right-click a tile**: Mark as read, Open in Discord, Remove from list.
 - **Drag** the widget by its handle and the chat by its header. Both remember their position and
   can't be dragged off the screen.

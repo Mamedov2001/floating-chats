@@ -251,46 +251,40 @@
     let hoverChannel = null;
     let hoverItem = null;
 
-    /** Сколько последних событий показывать в карточке; остальное — строкой «+N earlier». */
-    const CARD_EVENTS = 6;
-
-    /** Что сделал человек — только факт, без текста сообщений. */
-    function eventText(e) {
-        const times = e.count > 1 ? ` ×${e.count}` : "";
-        switch (e.kind) {
-            case "reply": return `replied to you${times}`;
-            case "mention": return `mentioned you${times}`;
-            case "role": return `mentioned your role${times}`;
-            case "everyone": return `mentioned everyone${times}`;
-            case "reaction": return `reacted ${e.emoji ?? ""}${times}`.trim();
-            case "message": return e.count > 1 ? `sent ${e.count} messages` : "sent a message";
-            default: return "";
-        }
-    }
+    /** Сколько человек показывать в карточке; остальные — строкой «+N more». */
+    const CARD_PEOPLE = 6;
 
     function eventTime(at) {
         return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
 
-    function eventRow(e) {
+    /** Кто что-то сделал в чате — каждый один раз, со временем последнего действия, свежие первыми. */
+    function peopleOf(events) {
+        const byUser = new Map();
+        for (const e of events) {
+            const prev = byUser.get(e.userId);
+            if (!prev || e.at >= prev.at) byUser.set(e.userId, e);
+        }
+        return [...byUser.values()].sort((a, b) => b.at - a.at);
+    }
+
+    /** Строка: аватар, имя, время. Само действие не показываем — только факт, что оно было. */
+    function personRow(e) {
         const avatar = el("div", "hc-avatar");
         setSenderAvatar(avatar, e);
 
-        const text = el("div", "hc-text");
-        const name = el("span", "hc-name", e.name);
+        const name = el("div", "hc-name", e.name);
         if (e.username && e.username !== e.name) name.title = `@${e.username}`;
-        text.append(name, el("span", "hc-action", ` ${eventText(e)}`));
 
         const row = el("div", "hc-row");
-        row.append(avatar, text, el("span", "hc-time", eventTime(e.at)));
+        row.append(avatar, name, el("span", "hc-time", eventTime(e.at)));
         return row;
     }
 
     function fillHoverCard(tile) {
-        // Свежие сверху; подряд идущие одинаковые уже склеены на стороне плагина.
-        const events = tile.events;
-        const rows = events.slice(-CARD_EVENTS).reverse().map(eventRow);
-        if (events.length > CARD_EVENTS) rows.push(el("div", "hc-more", `+${events.length - CARD_EVENTS} earlier`));
+        const people = peopleOf(tile.events);
+        const rows = people.slice(0, CARD_PEOPLE).map(personRow);
+        if (people.length > CARD_PEOPLE) rows.push(el("div", "hc-more", `+${people.length - CARD_PEOPLE} more`));
         hoverCard.replaceChildren(...rows);
     }
 
