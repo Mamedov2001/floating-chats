@@ -5,11 +5,12 @@
     --text: #dbdee1;
     --muted: #949ba4;
     --tile-size: 56px;
-    /* Ширина карточки при наведении — под неё в окне заранее зарезервировано место. */
     --card-width: 260px;
     --gap: 8px;
     /* Запас вокруг плиток под тень и вылезающий за край бейдж; native.ts учитывает его при позиционировании. */
     --pad: 6px;
+    /* Запас вокруг карточки/меню во всплывающем окне под тень; совпадает с POPUP_PAD в native.ts. */
+    --popup-pad: 10px;
 }
 
 html,
@@ -25,9 +26,9 @@ body {
     color: var(--text);
 }
 
-/* Содержимое прижато к правому краю окна: окно привязано правым верхним углом и растёт влево,
-   поэтому при изменении ширины (новая плитка, карточка человека, меню) ничего не прыгает,
-   пока main не подвинет окно. */
+/* Окно плиток привязано правым верхним углом и растёт влево: содержимое прижато вправо, чтобы при
+   изменении ширины (новая плитка) ничего не прыгало, пока main не подвинет окно.
+   Окно — ровно по плиткам: карточка и меню живут в отдельном всплывающем окне. */
 body {
     display: flex;
     justify-content: flex-end;
@@ -36,22 +37,16 @@ body {
 
 #root {
     display: inline-flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
-    /* Место под карточку по ширине зарезервировано заранее: при наведении окно растёт только вниз,
-       не меняя ширину и положение, — иначе Windows перерисовывает прозрачное окно со скачком.
-       Пустое место прозрачно для кликов (см. passThrough в overlay.js). */
-    min-width: var(--card-width);
     padding: var(--pad);
 }
 
-/* Вертикально: столбик плиток справа, карточка человека и меню — слева от него. */
-body.vertical #root {
-    flex-direction: row-reverse;
-    align-items: flex-start;
-    /* Столбик плиток (с подписями — 72px) + промежуток + карточка слева от него. */
-    min-width: calc(var(--tile-size) + 16px + 6px + var(--card-width));
+/* Всплывающее окно (карточка/меню): содержимое от левого верхнего угла, запас под тень. */
+body[data-mode="popup"] {
+    justify-content: flex-start;
+}
+
+body[data-mode="popup"] #root {
+    padding: var(--popup-pad);
 }
 
 #tiles {
@@ -160,7 +155,7 @@ body.vertical .grip svg {
     visibility: visible;
 }
 
-/* ---------- Карточка при наведении: список событий (кто и что сделал) ---------- */
+/* ---------- Карточка при наведении (во всплывающем окне): кто был активен и когда ---------- */
 
 .hover-card {
     display: flex;
@@ -173,26 +168,11 @@ body.vertical .grip svg {
     background: rgb(17 18 20 / 96%);
     box-shadow: 0 8px 16px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 255 255 / 4%);
     opacity: 0;
-    transform: translateY(-4px);
-    transition: opacity 0.14s ease, transform 0.14s ease;
-    pointer-events: none;
-}
-
-.hover-card[hidden] {
-    display: none;
+    transition: opacity 0.14s ease;
 }
 
 .hover-card.shown {
     opacity: 1;
-    transform: none;
-}
-
-body.vertical .hover-card {
-    transform: translateX(4px);
-}
-
-body.vertical .hover-card.shown {
-    transform: none;
 }
 
 /* Строка: аватар · «Имя действие» · время. */
@@ -409,10 +389,12 @@ body.labels:not(.vertical) #tiles {
     border-radius: 8px;
     background: #111214;
     box-shadow: 0 8px 16px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 255 255 / 4%);
+    opacity: 0;
+    transition: opacity 0.1s ease;
 }
 
-.menu[hidden] {
-    display: none;
+.menu.shown {
+    opacity: 1;
 }
 
 .menu-item {

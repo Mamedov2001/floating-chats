@@ -80,15 +80,32 @@ export type TileMenuAction = "markRead" | "openInDiscord" | "remove";
 /** Действия из оверлея в main (через preload). */
 export type OverlayAction =
     /** Размер содержимого и прямоугольник самих плиток (относительно окна) — по нему ставится окно чата. */
-    | { type: "layout"; width: number; height: number; tiles?: { x: number; y: number; width: number; height: number; }; }
+    | { type: "layout"; width: number; height: number; tiles?: WindowRect; }
     /** Курсор над прозрачной частью окна — пропускать клики насквозь (движение мыши всё равно приходит). */
     | { type: "passThrough"; value: boolean; }
+    /** Наведение на плитку / уход с неё (channelId: null). rect — элемент плитки в координатах окна. */
+    | { type: "hover"; channelId: string | null; rect?: WindowRect; }
+    /** Правый клик по плитке — показать меню. */
+    | { type: "menu"; channelId: string; rect: WindowRect; }
+    /** Из всплывающего окна: его размер (main ставит окно рядом с плиткой) и просьба закрыться (Esc). */
+    | { type: "popupLayout"; width: number; height: number; }
+    | { type: "popupClose"; }
     | { type: "tileClick"; channelId: string; }
     | { type: "tileMenu"; channelId: string; action: TileMenuAction; }
     /** Перетаскивание виджета за ручку: экранные координаты курсора. */
     | { type: "dragStart"; x: number; y: number; }
     | { type: "dragMove"; x: number; y: number; }
     | { type: "dragEnd"; };
+
+export interface WindowRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/** Что показать во всплывающем окне рядом с плиткой: карточку «кто был активен» или меню. */
+export type PopupContent = { mode: "card" | "menu"; tile: ChatTile; } | null;
 
 /** События из main в renderer Discord (long-poll через nextEvent). */
 export type OverlayEvent =

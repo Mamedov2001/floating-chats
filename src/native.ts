@@ -12,7 +12,8 @@ import rawOverlayJs from "file://overlay/overlay.js?minify";
 import preloadJs from "file://overlay/preload.js";
 
 import { POPOUT_KEY } from "./constants";
-import type { OverlayAction, OverlayEvent, OverlayState, TileMenuAction } from "./types";
+import { placeBeside } from "./placement";
+import type { ChatTile, OverlayAction, OverlayEvent, OverlayState, PopupContent, TileMenuAction, WindowRect } from "./types";
 
 const UPDATE_CHANNEL = "floating-chats:update";
 const ACTION_CHANNEL = "floating-chats:action";
@@ -23,6 +24,10 @@ const MARGIN_TOP = 12;
 /** Должен совпадать с --pad в overlay.css: прозрачный запас вокруг плиток внутри окна. */
 const PAD = 6;
 const MAX_SIZE = 2000;
+/** Должен совпадать с --popup-pad в overlay.css: запас под тень вокруг карточки/меню во всплывающем окне. */
+const POPUP_PAD = 10;
+/** Зазор между плиткой и карточкой/меню. */
+const POPUP_GAP = 6;
 const MAX_QUEUE = 100;
 const TILE_MENU_ACTIONS = new Set<TileMenuAction>(["markRead", "openInDiscord", "remove"]);
 
@@ -30,8 +35,18 @@ let win: BrowserWindow | null = null;
 const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, hideWhenDiscordFocused: false, showWhenEmpty: true, tiles: [], activeChannelId: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
-/** Прямоугольник плиток внутри окна (окно шире плиток: место под карточку зарезервировано). */
-let tilesRect: { x: number; y: number; width: number; height: number; } | null = null;
+/** Прямоугольник плиток внутри окна (без ручки и запаса вокруг) — по нему ставится окно чата. */
+let tilesRect: WindowRect | null = null;
+
+/**
+ * Всплывающее окно рядом с плиткой: карточка при наведении или меню по правому клику.
+ * Отдельное окно — чтобы окно плиток не меняло размер (иначе скачки) и могло стоять у любого края:
+ * main сам выбирает, с какой стороны плитки поставить всплывающее окно.
+ */
+let popupWin: BrowserWindow | null = null;
+let popupSize: { width: number; height: number; } | null = null;
+/** Что сейчас показано: вид, канал и прямоугольник плитки на экране. null — скрыто. */
+let popup: { mode: "card" | "menu"; channelId: string; rect: WindowRect; } | null = null;
 
 /**
  * Точка привязки виджета — правый верхний угол окна в экранных координатах. Окно растёт влево/вниз от неё,
@@ -75,7 +90,7 @@ function cspHash(source: string) {
     return `'sha256-${createHash("sha256").update(source, "utf8").digest("base64")}'`;
 }
 
-function buildHtml() {
+function buildHtml(mode: "widget" | "popup") {
     // Скрипт и стиль разрешены только по хешу — никакой другой код в окне выполниться не может.
     const csp = [
         "default-src 'none'",
@@ -87,7 +102,7 @@ function buildHtml() {
     return "<!doctype html><html><head><meta charset=\"utf-8\">"
         + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
         + `<style>${overlayCss}</style></head>`
-        + "<body><div id=\"root\"><div id=\"tiles\"></div></div>"
+        + `<body data-mode="${mode}"><div id="root"><div id="tiles"></div></div>`
         + `<script>${overlayJs}</script></body></html>`;
 }
 
@@ -190,6 +205,7 @@ function updateVisibility() {
     const empty = !state.tiles.length && !state.showWhenEmpty;
     if (empty || (state.hideWhenDiscordFocused && discordFocused)) {
         if (win.isVisible()) win.hide();
+        hidePopup();
     } else if (contentSize && !win.isVisible()) {
         // showInactive — показать, не забирая фокус у текущего окна (браузера, IDE).
         win.showInactive();
@@ -201,6 +217,91 @@ function pushState() {
     if (alive(win) && !win.webContents.isLoading())
         win.webContents.send(UPDATE_CHANNEL, state);
     updateVisibility();
+    refreshPopup();
+}
+
+// ---------- Всплывающее окно: карточка / меню ----------
+
+const findTile = (channelId: string): ChatTile | undefined => state.tiles.find(t => t.channelId === channelId);
+
+/** Прямоугольник из координат окна плиток — в экранные. */
+function toScreen(r: WindowRect | undefined): WindowRect | null {
+    if (!alive(win) || !r || ![r.x, r.y, r.width, r.height].every(Number.isFinite)) return null;
+    const b = win.getBounds();
+    return { x: Math.round(b.x + r.x), y: Math.round(b.y + r.y), width: Math.round(r.width), height: Math.round(r.height) };
+}
+
+function sendPopup(content: PopupContent) {
+    if (alive(popupWin) && !popupWin.webContents.isLoading()) popupWin.webContents.send(UPDATE_CHANNEL, content);
+}
+
+function showPopup(mode: "card" | "menu", tile: ChatTile, rect: WindowRect) {
+    if (!alive(popupWin)) return;
+    popup = { mode, channelId: tile.channelId, rect };
+    // Карточка — только смотреть: клики сквозь неё. Меню — кликабельное.
+    popupWin.setIgnoreMouseEvents(mode === "card");
+    // Окно встанет на место, когда всплывающее окно пришлёт размер (popupLayout).
+    sendPopup({ mode, tile });
+}
+
+function hidePopup() {
+    popup = null;
+    if (alive(popupWin) && popupWin.isVisible()) popupWin.hide();
+}
+
+/** Состояние плиток обновилось — обновить открытую карточку/меню или закрыть, если плитки не стало. */
+function refreshPopup() {
+    if (!popup) return;
+    const tile = findTile(popup.channelId);
+    if (!tile || (popup.mode === "card" && !tile.events?.length)) {
+        hidePopup();
+        return;
+    }
+    sendPopup({ mode: popup.mode, tile });
+}
+
+/**
+ * Поставить всплывающее окно рядом с плиткой, выбрав сторону (см. placeBeside): вертикально — слева,
+ * а если не помещается — справа; горизонтально — снизу, а если не помещается — сверху.
+ */
+function placePopup() {
+    if (!alive(popupWin) || !popup || !popupSize) return;
+    const { rect } = popup;
+    const wa = screen.getDisplayMatching(rect).workArea;
+    const { x, y } = placeBeside(rect, popupSize, wa, state.orientation === "vertical", POPUP_GAP, POPUP_PAD);
+    popupWin.setBounds({ x, y, ...popupSize });
+
+    if (popup.mode === "menu") {
+        // Меню закрывается по уходу фокуса (клик мимо) — поэтому ему нужен фокус.
+        if (!popupWin.isVisible()) popupWin.show();
+        if (!popupWin.isFocused()) popupWin.focus();
+    } else if (!popupWin.isVisible()) {
+        popupWin.showInactive();
+    }
+    popupWin.setAlwaysOnTop(true, "screen-saver");
+}
+
+function onPopupAction(action: OverlayAction) {
+    switch (action.type) {
+        case "popupLayout": {
+            const { width, height } = action;
+            if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+            popupSize = {
+                width: Math.min(Math.max(Math.ceil(width), 1), MAX_SIZE),
+                height: Math.min(Math.max(Math.ceil(height), 1), MAX_SIZE),
+            };
+            placePopup();
+            break;
+        }
+        case "popupClose":
+            hidePopup();
+            break;
+        case "tileMenu":
+            if (typeof action.channelId === "string" && TILE_MENU_ACTIONS.has(action.action))
+                pushEvent({ type: "tileMenu", channelId: action.channelId, action: action.action });
+            hidePopup();
+            break;
+    }
 }
 
 function pushEvent(ev: OverlayEvent) {
@@ -215,7 +316,12 @@ function pushEvent(ev: OverlayEvent) {
 }
 
 function onAction(e: IpcMainEvent, action: OverlayAction) {
-    if (!alive(win) || e.sender !== win.webContents || !action || typeof action !== "object") return;
+    if (!action || typeof action !== "object") return;
+    if (alive(popupWin) && e.sender === popupWin.webContents) {
+        onPopupAction(action);
+        return;
+    }
+    if (!alive(win) || e.sender !== win.webContents) return;
 
     switch (action.type) {
         case "layout": {
@@ -242,12 +348,24 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
             break;
-        case "tileMenu":
-            if (typeof action.channelId === "string" && TILE_MENU_ACTIONS.has(action.action))
-                pushEvent({ type: "tileMenu", channelId: action.channelId, action: action.action });
+        case "hover": {
+            // Меню открыто — наведение на плитки его не подменяет.
+            if (popup?.mode === "menu") return;
+            const tile = typeof action.channelId === "string" ? findTile(action.channelId) : undefined;
+            const rect = toScreen(action.rect);
+            if (tile?.events?.length && rect) showPopup("card", tile, rect);
+            else hidePopup();
             break;
+        }
+        case "menu": {
+            const tile = typeof action.channelId === "string" ? findTile(action.channelId) : undefined;
+            const rect = toScreen(action.rect);
+            if (tile && rect) showPopup("menu", tile, rect);
+            break;
+        }
         case "dragStart": {
             if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return;
+            hidePopup();
             const b = win.getBounds();
             drag = { pointerX: action.x, pointerY: action.y, winX: b.x, winY: b.y };
             break;
@@ -267,7 +385,7 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
     }
 }
 
-function createWindow() {
+function createWindow(mode: "widget" | "popup") {
     // ВАЖНО: не задавать title. Vencord патчит BrowserWindow и внедряет себя в любое окно,
     // у которого есть и preload, и title (так он находит окно Discord).
     const w = new BrowserWindow({
@@ -303,8 +421,8 @@ function createWindow() {
     w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     w.webContents.on("will-navigate", e => e.preventDefault());
     w.webContents.on("did-finish-load", () => {
-        log("overlay loaded");
-        pushState();
+        log(`${mode} loaded`);
+        if (mode === "widget") pushState();
     });
     // Диагностика: всё, что может помешать оверлею запуститься, пишем в main.log.
     w.webContents.on("preload-error", (_e, path, error) => log("preload error", path, error));
@@ -318,9 +436,18 @@ function createWindow() {
             win = null;
             contentSize = null;
         }
+        if (popupWin === w) {
+            popupWin = null;
+            popupSize = null;
+            popup = null;
+        }
+    });
+    // Меню закрывается кликом мимо (окно теряет фокус).
+    if (mode === "popup") w.on("blur", () => {
+        if (popup?.mode === "menu") hidePopup();
     });
 
-    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(buildHtml()));
+    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(buildHtml(mode)));
     return w;
 }
 
@@ -342,7 +469,8 @@ export function initOverlay(e: IpcMainInvokeEvent) {
     }
 
     loadAnchor();
-    win = createWindow();
+    win = createWindow("widget");
+    popupWin = createWindow("popup");
     log("overlay created");
 }
 
@@ -378,9 +506,11 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
     for (const ev of displayEvents) screen.removeListener(ev as any, applyBounds);
 
     if (alive(win)) win.destroy();
-    win = null;
-    contentSize = null;
+    if (alive(popupWin)) popupWin.destroy();
+    win = popupWin = null;
+    contentSize = popupSize = null;
     tilesRect = null;
+    popup = null;
     state = EMPTY_STATE;
 
     queue = [];
@@ -393,7 +523,7 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
 export function getWidgetBounds(_e: IpcMainInvokeEvent) {
     if (!alive(win) || !win.isVisible()) return null;
     const w = win.getBounds();
-    // Сами плитки (без прозрачного запаса под карточку), в экранных координатах.
+    // Сами плитки (без ручки и прозрачного запаса вокруг), в экранных координатах.
     const bounds = tilesRect
         ? { x: w.x + tilesRect.x, y: w.y + tilesRect.y, width: tilesRect.width, height: tilesRect.height }
         : w;
