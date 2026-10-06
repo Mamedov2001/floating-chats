@@ -5,6 +5,8 @@
     --text: #dbdee1;
     --muted: #949ba4;
     --tile-size: 56px;
+    /* Ширина карточки при наведении — под неё в окне заранее зарезервировано место. */
+    --card-width: 260px;
     --gap: 8px;
     /* Запас вокруг плиток под тень и вылезающий за край бейдж; native.ts учитывает его при позиционировании. */
     --pad: 6px;
@@ -37,6 +39,10 @@ body {
     flex-direction: column;
     align-items: flex-end;
     gap: 6px;
+    /* Место под карточку по ширине зарезервировано заранее: при наведении окно растёт только вниз,
+       не меняя ширину и положение, — иначе Windows перерисовывает прозрачное окно со скачком.
+       Пустое место прозрачно для кликов (см. passThrough в overlay.js). */
+    min-width: var(--card-width);
     padding: var(--pad);
 }
 
@@ -44,6 +50,8 @@ body {
 body.vertical #root {
     flex-direction: row-reverse;
     align-items: flex-start;
+    /* Столбик плиток (с подписями — 72px) + промежуток + карточка слева от него. */
+    min-width: calc(var(--tile-size) + 16px + 6px + var(--card-width));
 }
 
 #tiles {
@@ -158,7 +166,7 @@ body.vertical .grip svg {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 260px;
+    width: var(--card-width);
     box-sizing: border-box;
     padding: 10px 12px;
     border-radius: 8px;

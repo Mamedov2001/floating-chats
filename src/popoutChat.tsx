@@ -358,16 +358,17 @@ async function popoutPosition() {
         return { x: scr.availLeft + scr.availWidth - 16 - WIDTH, y: scr.availTop + 84 };
     }
 
-    const { bounds: b, workArea: wa, pad } = widget;
+    // bounds — прямоугольник самих плиток (окно виджета шире: в нём место под карточку при наведении).
+    const { bounds: b, workArea: wa } = widget;
     let x: number, y: number;
     if (settings.store.orientation === "vertical") {
-        // Слева от столбика плиток, верхним краем вровень с первой плиткой.
-        x = b.x + pad - GAP - WIDTH;
-        y = b.y + pad;
+        // Слева от столбика плиток, верхним краем вровень с ним.
+        x = b.x - GAP - WIDTH;
+        y = b.y;
     } else {
-        // Под рядом плиток, правым краем вровень с крайней плиткой.
-        x = b.x + b.width - pad - WIDTH;
-        y = b.y + b.height - pad + GAP;
+        // Под рядом плиток, правым краем вровень с ним.
+        x = b.x + b.width - WIDTH;
+        y = b.y + b.height + GAP;
     }
     x = Math.min(Math.max(x, wa.x), wa.x + wa.width - WIDTH);
     y = Math.min(Math.max(y, wa.y), wa.y + wa.height - HEIGHT);

@@ -30,6 +30,8 @@ let win: BrowserWindow | null = null;
 const EMPTY_STATE: OverlayState = { orientation: "horizontal", showLabels: true, hideWhenDiscordFocused: false, showWhenEmpty: true, tiles: [], activeChannelId: null };
 let state: OverlayState = EMPTY_STATE;
 let contentSize: { width: number; height: number; } | null = null;
+/** Прямоугольник плиток внутри окна (окно шире плиток: место под карточку зарезервировано). */
+let tilesRect: { x: number; y: number; width: number; height: number; } | null = null;
 
 /**
  * Точка привязки виджета — правый верхний угол окна в экранных координатах. Окно растёт влево/вниз от неё,
@@ -223,11 +225,20 @@ function onAction(e: IpcMainEvent, action: OverlayAction) {
                 width: Math.min(Math.max(Math.ceil(width), 1), MAX_SIZE),
                 height: Math.min(Math.max(Math.ceil(height), 1), MAX_SIZE),
             };
+            const t = action.tiles;
+            tilesRect = t && [t.x, t.y, t.width, t.height].every(Number.isFinite)
+                ? { x: Math.round(t.x), y: Math.round(t.y), width: Math.round(t.width), height: Math.round(t.height) }
+                : null;
             log("layout", contentSize, "tiles:", state.tiles.length);
             applyBounds();
             updateVisibility();
             break;
         }
+        case "passThrough":
+            // Прозрачные части окна не должны перехватывать клики; forward — чтобы видеть движение мыши
+            // и вернуть окно в «кликабельное» состояние, когда курсор окажется над плиткой.
+            win.setIgnoreMouseEvents(action.value === true, { forward: true });
+            break;
         case "tileClick":
             if (typeof action.channelId === "string") pushEvent({ type: "tileClick", channelId: action.channelId });
             break;
@@ -287,6 +298,8 @@ function createWindow() {
     });
 
     w.setAlwaysOnTop(true, "screen-saver");
+    // Пока оверлей не сообщил, где курсор, всё окно прозрачно для кликов.
+    w.setIgnoreMouseEvents(true, { forward: true });
     w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     w.webContents.on("will-navigate", e => e.preventDefault());
     w.webContents.on("did-finish-load", () => {
@@ -367,6 +380,7 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
     if (alive(win)) win.destroy();
     win = null;
     contentSize = null;
+    tilesRect = null;
     state = EMPTY_STATE;
 
     queue = [];
@@ -378,9 +392,13 @@ export function disposeOverlay(_e: IpcMainInvokeEvent) {
 /** Где сейчас виджет и рабочая область его монитора — чтобы renderer поставил попаут чата рядом. */
 export function getWidgetBounds(_e: IpcMainInvokeEvent) {
     if (!alive(win) || !win.isVisible()) return null;
-    const bounds = win.getBounds();
-    const workArea = screen.getDisplayMatching(bounds).workArea;
-    return { bounds, workArea, pad: PAD };
+    const w = win.getBounds();
+    // Сами плитки (без прозрачного запаса под карточку), в экранных координатах.
+    const bounds = tilesRect
+        ? { x: w.x + tilesRect.x, y: w.y + tilesRect.y, width: tilesRect.width, height: tilesRect.height }
+        : w;
+    const workArea = screen.getDisplayMatching(w).workArea;
+    return { bounds, workArea };
 }
 
 export function resetWidgetPosition(_e: IpcMainInvokeEvent) {

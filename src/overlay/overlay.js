@@ -234,8 +234,13 @@
         elem.style.marginRight = elem.style.marginTop = "0px";
         const pad = parseFloat(getComputedStyle(root).paddingTop) || 0;
         const r = root.getBoundingClientRect(), t = tileItem.getBoundingClientRect();
-        if (state.orientation === "vertical") elem.style.marginTop = `${Math.max(0, t.top - r.top - pad)}px`;
-        else elem.style.marginRight = `${Math.max(0, r.right - pad - t.right)}px`;
+        if (state.orientation === "vertical") {
+            elem.style.marginTop = `${Math.max(0, t.top - r.top - pad)}px`;
+        } else {
+            // Не дальше левого края окна: иначе окно расширится влево (сдвиг + перерисовка = скачок).
+            const room = r.width - 2 * pad - elem.offsetWidth;
+            elem.style.marginRight = `${Math.max(0, Math.min(r.right - pad - t.right, room))}px`;
+        }
     }
 
     // ---------- Карточка человека при наведении ----------
@@ -374,15 +379,44 @@
 
     // ---------- Размер окна ----------
 
-    // Окно подгоняется под содержимое: сообщаем main реальный размер #root.
-    let lastW = 0, lastH = 0;
-    new ResizeObserver(() => {
-        const r = root.getBoundingClientRect();
-        const width = Math.ceil(r.width), height = Math.ceil(r.height);
-        if (width === lastW && height === lastH) return;
-        lastW = width; lastH = height;
-        api.send({ type: "layout", width, height });
-    }).observe(root);
+    // Окно подгоняется под содержимое: сообщаем main размер #root и где внутри него плитки.
+    let lastLayout = "";
+    const layoutObserver = new ResizeObserver(() => {
+        const r = root.getBoundingClientRect(), t = tilesEl.getBoundingClientRect();
+        const layout = {
+            type: "layout",
+            width: Math.ceil(r.width),
+            height: Math.ceil(r.height),
+            tiles: { x: t.left, y: t.top, width: t.width, height: t.height },
+        };
+        const key = JSON.stringify(layout);
+        if (key === lastLayout) return;
+        lastLayout = key;
+        api.send(layout);
+    });
+    layoutObserver.observe(root);
+    layoutObserver.observe(tilesEl);
+
+    // ---------- Клики сквозь прозрачные места ----------
+
+    // Окно шире плиток (место под карточку зарезервировано), и прозрачные места не должны мешать
+    // кликать по окнам под виджетом. Над ними просим main пропускать клики; движение мыши при этом
+    // всё равно приходит (forward), и над плиткой окно снова становится кликабельным.
+    const TRANSPARENT = new Set([document.documentElement, document.body, root, tilesEl]);
+    let passThrough = true;
+    function setPassThrough(value) {
+        if (value === passThrough) return;
+        passThrough = value;
+        api.send({ type: "passThrough", value });
+    }
+    document.addEventListener("mousemove", e => {
+        // Пока тащим виджет за ручку, окно должно ловить мышь.
+        if (dragging) return;
+        setPassThrough(TRANSPARENT.has(e.target));
+    });
+    document.documentElement.addEventListener("mouseleave", () => {
+        if (!dragging) setPassThrough(true);
+    });
 
     api.onUpdate(next => {
         state = next;

@@ -79,7 +79,10 @@ export type TileMenuAction = "markRead" | "openInDiscord" | "remove";
 
 /** Действия из оверлея в main (через preload). */
 export type OverlayAction =
-    | { type: "layout"; width: number; height: number; }
+    /** Размер содержимого и прямоугольник самих плиток (относительно окна) — по нему ставится окно чата. */
+    | { type: "layout"; width: number; height: number; tiles?: { x: number; y: number; width: number; height: number; }; }
+    /** Курсор над прозрачной частью окна — пропускать клики насквозь (движение мыши всё равно приходит). */
+    | { type: "passThrough"; value: boolean; }
     | { type: "tileClick"; channelId: string; }
     | { type: "tileMenu"; channelId: string; action: TileMenuAction; }
     /** Перетаскивание виджета за ручку: экранные координаты курсора. */
