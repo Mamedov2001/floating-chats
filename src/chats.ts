@@ -3,20 +3,22 @@
 import type { Channel, User } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    ChannelStore, FluxDispatcher, GuildMemberStore, GuildRoleStore, GuildStore, MessageStore, ReadStateStore, RelationshipStore,
+    ChannelStore, FluxDispatcher, GuildMemberStore, GuildStore, MessageStore, ReadStateStore, RelationshipStore,
     SelectedChannelStore, UserGuildSettingsStore, UserStore, WindowStore
 } from "@webpack/common";
 
 import { settings } from "./settings";
-import type { ChatTile, RawMessage, RawUser, ReactionAddEvent, TileSender } from "./types";
+import type { ChatTile, RawMessage, RawUser, ReactionAddEvent, TileEvent, TileEventKind } from "./types";
 
 const CDN = "https://cdn.discordapp.com";
 const DISCORD_EPOCH = 1420070400000n;
 
 /** channelId → время последнего сообщения (мс). Порядок плиток определяется этим временем. */
 const recent = new Map<string, number>();
-/** Кто последним поднял плитку канала (тегнул, написал в группе, поставил реакцию). */
-const senders = new Map<string, TileSender>();
+/** События по каналам с момента последнего прочтения (для списка в карточке при наведении). */
+const events = new Map<string, TileEvent[]>();
+/** Сколько событий помнить на канал (в карточке показываются последние из них). */
+const MAX_EVENTS = 20;
 /** Новые реакции на мои сообщения по каналам: Discord их в непрочитанное не считает — считаем сами. */
 const reactions = new Map<string, number>();
 /** Сколько чатов помнить (с запасом над maxTiles: часть может быть скрыта настройками). */
@@ -28,9 +30,23 @@ function remember(channelId: string, at: number) {
     const oldest = [...recent].sort((a, b) => a[1] - b[1]).slice(0, recent.size - MAX_REMEMBERED);
     for (const [id] of oldest) {
         recent.delete(id);
-        senders.delete(id);
+        events.delete(id);
         reactions.delete(id);
     }
+}
+
+/** Добавить событие; подряд идущее такое же (тот же человек, вид, эмодзи) — склеить со счётчиком. */
+function addEvent(channelId: string, ev: Omit<TileEvent, "count">) {
+    const list = events.get(channelId) ?? [];
+    const last = list.at(-1);
+    if (last && last.userId === ev.userId && last.kind === ev.kind && last.emoji === ev.emoji) {
+        last.count++;
+        last.at = Math.max(last.at, ev.at);
+    } else {
+        list.push({ ...ev, count: 1 });
+        if (list.length > MAX_EVENTS) list.splice(0, list.length - MAX_EVENTS);
+    }
+    events.set(channelId, list);
 }
 
 function snowflakeTime(id: string) {
@@ -63,17 +79,21 @@ function channelAllowed(channel: Channel) {
     return true;
 }
 
-function mentionsMe(message: RawMessage, channel: Channel, myId: string) {
-    if (message.mentions?.some(u => u.id === myId)) return true;
+/** Почему сообщение касается меня: ответ мне, упоминание меня, моей роли, @everyone/@here. null — не касается. */
+function mentionKind(message: RawMessage, channel: Channel, myId: string): TileEventKind | null {
+    // Ответ на моё сообщение — даже если пинг при ответе выключен.
+    if (message.referenced_message?.author?.id === myId) return "reply";
+    if (message.mentions?.some(u => u.id === myId)) return "mention";
 
     const guildId = channel.guild_id;
-    if (message.mention_everyone && !UserGuildSettingsStore.isSuppressEveryoneEnabled(guildId)) return true;
+    if (!guildId) return message.mention_everyone ? "everyone" : null;
 
     if (message.mention_roles?.length && !UserGuildSettingsStore.isSuppressRolesEnabled(guildId)) {
         const myRoles = GuildMemberStore.getMember(guildId, myId)?.roles ?? [];
-        if (message.mention_roles.some(r => myRoles.includes(r))) return true;
+        if (message.mention_roles.some(r => myRoles.includes(r))) return "role";
     }
-    return false;
+    if (message.mention_everyone && !UserGuildSettingsStore.isSuppressEveryoneEnabled(guildId)) return "everyone";
+    return null;
 }
 
 /**
@@ -95,17 +115,15 @@ export function handleMessage(message: RawMessage): boolean {
 
     if (RelationshipStore.isBlocked(message.author.id)) return false;
     if (!channelAllowed(channel)) return false;
-    if (!isPrivate(channel) && !mentionsMe(message, channel, me.id)) return false;
+    const kind = mentionKind(message, channel, me.id);
+    if (!isPrivate(channel) && !kind) return false;
 
     // Чат открыт в активном окне Discord — я его и так вижу.
     if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
 
-    // В обычном ЛС отправитель — это и есть плитка; в группе и на сервере покажем, кто именно.
-    if (channel.type === ChannelType.DM) senders.delete(channel.id);
-    else senders.set(channel.id, {
-        ...senderOf(channel, message.author.id, message.author),
-        preview: messagePreview(channel, message.content, message.attachments?.length ?? 0),
-    });
+    // В обычном ЛС отправитель — это и есть плитка; в группе и на сервере запишем, кто и что сделал.
+    if (channel.type !== ChannelType.DM)
+        addEvent(channel.id, { ...personOf(channel, message.author.id, message.author), kind: kind ?? "message", at });
 
     remember(channel.id, at);
     return true;
@@ -129,21 +147,18 @@ export function handleReaction(ev: ReactionAddEvent): boolean {
     if (RelationshipStore.isBlocked(ev.userId)) return false;
     if (SelectedChannelStore.getChannelId() === channel.id && WindowStore.isFocused()) return false;
 
+    const at = Date.now();
     reactions.set(channel.id, (reactions.get(channel.id) ?? 0) + 1);
-    // Превью — моё сообщение, на которое поставили реакцию (если оно загружено).
-    const reacted = MessageStore.getMessage(ev.channelId, ev.messageId);
-    senders.set(channel.id, {
-        ...senderOf(channel, ev.userId),
-        emoji: emojiText(ev.emoji),
-        preview: reacted ? messagePreview(channel, reacted.content, reacted.attachments?.length ?? 0) : undefined,
-    });
-    remember(channel.id, Date.now());
+    addEvent(channel.id, { ...personOf(channel, ev.userId), kind: "reaction", emoji: emojiText(ev.emoji), at });
+    remember(channel.id, at);
     return true;
 }
 
-/** Реакции в канале просмотрены (открыли чат в оверлее или в самом Discord). */
-export function clearReactions(channelId: string) {
-    return reactions.delete(channelId);
+/** Активность в канале просмотрена (открыли его в самом Discord): реакции и список событий. */
+export function clearActivity(channelId: string) {
+    const hadReactions = reactions.delete(channelId);
+    const hadEvents = events.delete(channelId);
+    return hadReactions || hadEvents;
 }
 
 /** Подхватить ЛС и группы, где уже есть непрочитанное (вызывать после загрузки данных Discord). */
@@ -156,9 +171,9 @@ export function seedFromUnread() {
     }
 }
 
-/** Что сохраняется о чате помимо времени: отправитель для карточки и счётчик реакций (их Discord не хранит). */
+/** Что сохраняется о чате помимо времени: события для карточки и счётчик реакций (их Discord не хранит). */
 interface SavedExtra {
-    from?: TileSender;
+    events?: TileEvent[];
     reactions?: number;
 }
 
@@ -166,33 +181,38 @@ interface SavedExtra {
 export function exportChats(): [string, number, SavedExtra?][] {
     return [...recent].map(([id, at]) => {
         const extra: SavedExtra = {};
-        const from = senders.get(id);
+        const list = events.get(id);
         const count = reactions.get(id);
-        if (from) extra.from = from;
+        if (list?.length) extra.events = list;
         if (count) extra.reactions = count;
-        return from || count ? [id, at, extra] : [id, at];
+        return list?.length || count ? [id, at, extra] : [id, at];
     });
 }
 
 const optionalString = (v: unknown) => v === undefined || typeof v === "string";
+const EVENT_KINDS = new Set<TileEventKind>(["mention", "reply", "role", "everyone", "message", "reaction"]);
 
-/** Сохранённый отправитель пришёл из хранилища — проверяем форму, прежде чем показывать. */
-function parseSender(v: unknown): TileSender | undefined {
+/** Сохранённое событие пришло из хранилища — проверяем форму, прежде чем показывать. */
+function parseEvent(v: unknown): TileEvent | undefined {
     if (!v || typeof v !== "object") return undefined;
-    const s = v as Record<string, unknown>;
-    if (typeof s.userId !== "string" || typeof s.name !== "string") return undefined;
-    if (![s.username, s.avatarUrl, s.emoji, s.preview].every(optionalString)) return undefined;
+    const e = v as Record<string, unknown>;
+    if (typeof e.userId !== "string" || typeof e.name !== "string") return undefined;
+    if (![e.username, e.avatarUrl, e.emoji].every(optionalString)) return undefined;
+    if (!EVENT_KINDS.has(e.kind as TileEventKind)) return undefined;
+    if (typeof e.count !== "number" || e.count < 1 || typeof e.at !== "number") return undefined;
     return {
-        userId: s.userId,
-        name: s.name,
-        username: s.username as string | undefined,
-        avatarUrl: s.avatarUrl as string | undefined,
-        emoji: s.emoji as string | undefined,
-        preview: s.preview as string | undefined,
+        userId: e.userId,
+        name: e.name,
+        username: e.username as string | undefined,
+        avatarUrl: e.avatarUrl as string | undefined,
+        kind: e.kind as TileEventKind,
+        emoji: e.emoji as string | undefined,
+        count: Math.floor(e.count),
+        at: e.at,
     };
 }
 
-/** Восстановить список. Понимает и старый формат [channelId, время] без доп. данных. */
+/** Восстановить список. Понимает и старые форматы: [channelId, время] и { from } вместо { events }. */
 export function importChats(saved: unknown) {
     if (!Array.isArray(saved)) return;
     for (const entry of saved) {
@@ -200,8 +220,18 @@ export function importChats(saved: unknown) {
         const [id, at, extra] = entry as [string, number, Record<string, unknown> | undefined];
         remember(id, at);
 
-        const from = parseSender(extra?.from);
-        if (from && !senders.has(id)) senders.set(id, from);
+        if (!events.has(id)) {
+            const list = Array.isArray(extra?.events)
+                ? extra.events.map(parseEvent).filter((e): e is TileEvent => !!e).slice(-MAX_EVENTS)
+                : [];
+            // Старый формат: один отправитель { from } — превращаем в одно событие.
+            const from = extra?.from as Record<string, unknown> | undefined;
+            if (!list.length && from) {
+                const ev = parseEvent({ ...from, kind: from.emoji ? "reaction" : "mention", count: 1, at });
+                if (ev) list.push(ev);
+            }
+            if (list.length) events.set(id, list);
+        }
         const count = extra?.reactions;
         if (typeof count === "number" && count > 0 && !reactions.has(id)) reactions.set(id, Math.floor(count));
     }
@@ -209,8 +239,7 @@ export function importChats(saved: unknown) {
 
 /** Отметить канал прочитанным (как кнопка «прочитать всё» в Vencord: BULK_ACK по последнему сообщению). */
 export function markRead(channelId: string) {
-    clearReactions(channelId);
-    senders.delete(channelId);
+    clearActivity(channelId);
     if (!ReadStateStore.hasUnread(channelId)) return;
     const messageId = ReadStateStore.lastMessageId(channelId);
     if (!messageId) return;
@@ -224,13 +253,13 @@ export function markRead(channelId: string) {
 export function removeChat(channelId: string) {
     recent.delete(channelId);
     reactions.delete(channelId);
-    senders.delete(channelId);
+    events.delete(channelId);
 }
 
 export function clearChats() {
     recent.clear();
     reactions.clear();
-    senders.clear();
+    events.clear();
 }
 
 /** URL аватара по id и полям avatar/discriminator — подходит и для User из стора, и для сырого автора из события. */
@@ -244,35 +273,14 @@ function userAvatarUrl(userId: string, user: Pick<User, "avatar" | "discriminato
     return `${CDN}/embed/avatars/${index}.png`;
 }
 
-/** Карточка отправителя: имя с учётом ника на сервере, аватар. raw — автор из события (если стор ещё не знает). */
-function senderOf(channel: Channel, userId: string, raw?: RawUser): TileSender {
+/** Кто это: имя с учётом ника на сервере, @username, аватар. raw — автор из события (если стор ещё не знает). */
+function personOf(channel: Channel, userId: string, raw?: RawUser): Pick<TileEvent, "userId" | "name" | "username" | "avatarUrl"> {
     const user = UserStore.getUser(userId);
     const nick = channel.guild_id
         ? GuildMemberStore.getNick(channel.guild_id, userId)
         : RelationshipStore.getNickname(userId);
     const name = nick || raw?.global_name || user?.globalName || raw?.username || user?.username || "Unknown user";
     return { userId, name, username: raw?.username ?? user?.username, avatarUrl: userAvatarUrl(userId, user ?? raw) };
-}
-
-const PREVIEW_LENGTH = 160;
-
-/** Начало сообщения простым текстом: разметка упоминаний Discord (<@id>, <#id>, <:emoji:id>) — в читаемый вид. */
-function messagePreview(channel: Channel, content: string | undefined, attachments: number) {
-    const guildId = channel.guild_id;
-    const text = (content ?? "")
-        .replace(/<@!?(\d+)>/g, (_, id: string) => {
-            const nick = guildId ? GuildMemberStore.getNick(guildId, id) : null;
-            const user = UserStore.getUser(id);
-            return "@" + (nick || user?.globalName || user?.username || "user");
-        })
-        .replace(/<@&(\d+)>/g, (_, id: string) => "@" + ((guildId && GuildRoleStore.getRole(guildId, id)?.name) || "role"))
-        .replace(/<#(\d+)>/g, (_, id: string) => "#" + (ChannelStore.getChannel(id)?.name ?? "channel"))
-        .replace(/<a?(:\w+:)\d+>/g, "$1")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    if (!text) return attachments ? (attachments > 1 ? `📎 ${attachments} attachments` : "📎 Attachment") : undefined;
-    return text.length > PREVIEW_LENGTH ? text.slice(0, PREVIEW_LENGTH - 1) + "…" : text;
 }
 
 /** Эмодзи реакции текстом: юникод как есть, кастомный — :name:. */
@@ -351,7 +359,7 @@ export function buildTiles(keepChannelId: string | null = null): ChatTile[] {
             ...describe(channel),
             unread,
             lastMessageAt,
-            from: senders.get(channelId),
+            events: events.get(channelId)?.map(e => ({ ...e })),
         });
     }
     return tiles;

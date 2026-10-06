@@ -188,7 +188,7 @@
         context.textContent = tile.context ?? "";
         context.hidden = !tile.context;
 
-        updateSender(item, tile.from);
+        updateSender(item, tile.events?.at(-1));
     }
 
     /** Круглый аватар отправителя (значок в углу плитки или в карточке): цветной фон, картинка поверх. */
@@ -246,39 +246,53 @@
     let hoverChannel = null;
     let hoverItem = null;
 
-    /** Что произошло — строка под именем. */
-    function senderAction(tile, from) {
-        if (from.emoji) return `Reacted ${from.emoji}`;
-        if (tile.context) return `Mentioned you in ${tile.name} · ${tile.context}`;
-        return `Wrote in ${tile.name}`;
+    /** Сколько последних событий показывать в карточке; остальное — строкой «+N earlier». */
+    const CARD_EVENTS = 6;
+
+    /** Что сделал человек — только факт, без текста сообщений. */
+    function eventText(e) {
+        const times = e.count > 1 ? ` ×${e.count}` : "";
+        switch (e.kind) {
+            case "reply": return `replied to you${times}`;
+            case "mention": return `mentioned you${times}`;
+            case "role": return `mentioned your role${times}`;
+            case "everyone": return `mentioned everyone${times}`;
+            case "reaction": return `reacted ${e.emoji ?? ""}${times}`.trim();
+            case "message": return e.count > 1 ? `sent ${e.count} messages` : "sent a message";
+            default: return "";
+        }
+    }
+
+    function eventTime(at) {
+        return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function eventRow(e) {
+        const avatar = el("div", "hc-avatar");
+        setSenderAvatar(avatar, e);
+
+        const text = el("div", "hc-text");
+        const name = el("span", "hc-name", e.name);
+        if (e.username && e.username !== e.name) name.title = `@${e.username}`;
+        text.append(name, el("span", "hc-action", ` ${eventText(e)}`));
+
+        const row = el("div", "hc-row");
+        row.append(avatar, text, el("span", "hc-time", eventTime(e.at)));
+        return row;
     }
 
     function fillHoverCard(tile) {
-        const from = tile.from;
-        const avatar = el("div", "hc-avatar");
-        setSenderAvatar(avatar, from);
-
-        const names = el("div", "hc-names");
-        names.append(el("div", "hc-name", from.name));
-        if (from.username && from.username !== from.name) names.append(el("div", "hc-username", `@${from.username}`));
-
-        const head = el("div", "hc-head");
-        head.append(avatar, names);
-
-        const nodes = [head, el("div", "hc-action", senderAction(tile, from))];
-        if (from.preview) {
-            // Подложка и обрезка строк — на разных элементах: иначе следующая строка видна в нижнем отступе.
-            const preview = el("div", "hc-preview");
-            preview.append(el("div", "hc-preview-text", from.preview));
-            nodes.push(preview);
-        }
-        hoverCard.replaceChildren(...nodes);
+        // Свежие сверху; подряд идущие одинаковые уже склеены на стороне плагина.
+        const events = tile.events;
+        const rows = events.slice(-CARD_EVENTS).reverse().map(eventRow);
+        if (events.length > CARD_EVENTS) rows.push(el("div", "hc-more", `+${events.length - CARD_EVENTS} earlier`));
+        hoverCard.replaceChildren(...rows);
     }
 
     function showHoverCard(channelId, tileItem) {
         if (!menu.hidden) return;
         const tile = state.tiles.find(t => t.channelId === channelId);
-        if (!tile?.from) return;
+        if (!tile?.events?.length) return;
 
         hoverChannel = channelId;
         hoverItem = tileItem;
@@ -301,7 +315,7 @@
     /** Состояние обновилось, пока карточка открыта: новые данные, или плитка/отправитель пропали. */
     function refreshHoverCard() {
         const tile = state.tiles.find(t => t.channelId === hoverChannel);
-        if (!tile?.from || !hoverItem?.isConnected) {
+        if (!tile?.events?.length || !hoverItem?.isConnected) {
             hideHoverCard();
             return;
         }

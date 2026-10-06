@@ -3,7 +3,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
 import { ReadStateStore, UserStore } from "@webpack/common";
 
-import { buildTiles, clearChats, clearReactions, exportChats, handleMessage, handleReaction, importChats, markRead, removeChat, seedFromUnread } from "./chats";
+import { buildTiles, clearActivity, clearChats, exportChats, handleMessage, handleReaction, importChats, markRead, removeChat, seedFromUnread } from "./chats";
 import { closeChatPopout, openChatPopout, openInDiscord, resetHistoryRequests, resetPopoutPosition } from "./popoutChat";
 import { onResetPositions, onTilesSettingChanged, settings } from "./settings";
 import type { MessageCreateEvent, OverlayEvent, OverlayState, ReactionAddEvent, TileMenuAction } from "./types";
@@ -180,9 +180,9 @@ export default definePlugin({
                 scheduleRefresh();
             }
         },
-        // Открыли канал в самом Discord — его реакции просмотрены.
+        // Открыли канал в самом Discord — его реакции и события просмотрены.
         CHANNEL_SELECT({ channelId }: { channelId?: string | null; }) {
-            if (running && channelId && clearReactions(channelId)) scheduleRefresh();
+            if (running && channelId && clearActivity(channelId)) scheduleRefresh();
         },
         // Данные Discord (каналы, непрочитанное) загружены — после старта или переподключения.
         CONNECTION_OPEN() {

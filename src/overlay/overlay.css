@@ -152,13 +152,13 @@ body.vertical .grip svg {
     visibility: visible;
 }
 
-/* ---------- Карточка человека при наведении (в стиле мини-профиля Discord) ---------- */
+/* ---------- Карточка при наведении: список событий (кто и что сделал) ---------- */
 
 .hover-card {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    width: 240px;
+    gap: 8px;
+    width: 260px;
     box-sizing: border-box;
     padding: 10px 12px;
     border-radius: 8px;
@@ -187,17 +187,18 @@ body.vertical .hover-card.shown {
     transform: none;
 }
 
-.hc-head {
+/* Строка: аватар · «Имя действие» · время. */
+.hc-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .hc-avatar {
     position: relative;
     flex: none;
-    width: 36px;
-    height: 36px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     overflow: hidden;
 }
@@ -215,55 +216,36 @@ body.vertical .hover-card.shown {
     visibility: visible;
 }
 
-.hc-names {
+/* Имя и действие одним текстом; длинное имя переносится, а не обрезается. */
+.hc-text {
+    flex: 1;
     min-width: 0;
-}
-
-.hc-username {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Имя целиком — ради него карточка и открывается: переносится, а не обрезается. */
-.hc-name {
-    overflow-wrap: anywhere;
-    color: #f2f3f5;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 19px;
-}
-
-.hc-username {
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 15px;
-}
-
-.hc-action {
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 15px;
-}
-
-/* Начало сообщения: подложка с отступами... */
-.hc-preview {
-    padding: 6px 8px;
-    border-radius: 4px;
-    background: rgb(255 255 255 / 4%);
-}
-
-/* ...и сам текст: до четырёх строк, дальше многоточие. Обрезка на элементе без отступов —
-   иначе пятая строка выглядывает в нижний padding. */
-.hc-preview-text {
-    display: -webkit-box;
-    overflow: hidden;
-    color: var(--text);
     font-size: 13px;
     line-height: 17px;
     overflow-wrap: anywhere;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
+}
+
+.hc-name {
+    color: #f2f3f5;
+    font-weight: 600;
+}
+
+.hc-action {
+    color: var(--text);
+}
+
+.hc-time {
+    flex: none;
+    align-self: flex-start;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 17px;
+}
+
+.hc-more {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
 }
 
 /* Заглушка «нет новых сообщений»: пунктирная пустая плитка, неяркая, чтобы не отвлекать. */

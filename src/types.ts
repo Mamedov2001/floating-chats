@@ -19,6 +19,8 @@ export interface RawMessage {
     mentions: RawUser[];
     mention_everyone: boolean;
     mention_roles: string[];
+    /** Сообщение, на которое это — ответ (есть у ответов). */
+    referenced_message?: { author?: { id: string; }; } | null;
     attachments: unknown[];
     embeds: unknown[];
 }
@@ -35,21 +37,27 @@ export interface ChatTile {
     name: string;
     /** Вторая строка подписи: сервер (для ЛС и групп нет). */
     context?: string;
-    /** Кто поднял плитку: тегнул на сервере, написал в группе или поставил реакцию. Для обычных ЛС нет. */
-    from?: TileSender;
+    /** События с момента последнего прочтения, по времени (старые первыми). В обычных ЛС — только реакции. */
+    events?: TileEvent[];
     unread: number;
     lastMessageAt: number;
 }
 
-export interface TileSender {
+/** Что произошло: тегнули, ответили, тегнули роль/всех, написали в группе, поставили реакцию. */
+export type TileEventKind = "mention" | "reply" | "role" | "everyone" | "message" | "reaction";
+
+/** Событие в чате для списка в карточке. Подряд идущие одинаковые склеиваются (count). */
+export interface TileEvent {
     userId: string;
     name: string;
     username?: string;
     avatarUrl?: string;
-    /** Эмодзи, если плитку подняла реакция. */
+    kind: TileEventKind;
+    /** Эмодзи — для реакций. */
     emoji?: string;
-    /** Начало сообщения (для реакции — моего сообщения, на которое её поставили), простым текстом. */
-    preview?: string;
+    count: number;
+    /** Время последнего из склеенных событий, мс. */
+    at: number;
 }
 
 export type Orientation = "horizontal" | "vertical";
