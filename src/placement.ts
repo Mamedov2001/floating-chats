@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // Где поставить всплывающее окно (карточку, меню, чат) рядом с плитками. Чистая функция — без Electron,
 // чтобы её можно было проверить в Node.
 

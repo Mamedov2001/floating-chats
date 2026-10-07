@@ -108,3 +108,11 @@ The **Move widget and chat back to the screen corner** button resets their saved
   showing Discord's own channel chat component. That's why all chat features work out of the box.
 
 Development notes (in Russian) are in [CLAUDE.md](CLAUDE.md).
+
+## License
+
+FloatingChats is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License v3.0](LICENSE) or (at your option) any later version — the same license as Vencord,
+whose code it builds on.
+
+Copyright (c) 2026 Mamedov2001

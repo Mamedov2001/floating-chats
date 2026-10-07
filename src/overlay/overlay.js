@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // Логика окон оверлея. Без фреймворков; любой текст из Discord — только через textContent.
 //
 // Один скрипт на два окна (режим — <body data-mode>):

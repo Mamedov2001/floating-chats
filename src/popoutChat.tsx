@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // Чат канала — настоящий интерфейс Discord в его же попауте (окне, которое Discord открывает для звонков,
 // саундборда и т.п.). Компоненты Discord ищутся по устойчивым строкам кода, а не по номерам модулей.
 //

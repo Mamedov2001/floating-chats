@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
 import { OptionType } from "@utils/types";

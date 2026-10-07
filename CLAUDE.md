@@ -174,8 +174,8 @@ Vencord/                          ← клон https://github.com/Vendicated/Ven
 
 ### Фактическая раскладка (сделано на этапе 0)
 
-- Репозиторий плагина: `<папка>\floating-chats` (исходники в `src/`).
-- Vencord: `<папка>\Vencord`.
+- Репозиторий плагина и клон Vencord лежат **рядом в одной папке**: `<папка>\floating-chats`
+  (исходники в `src/`) и `<папка>\Vencord` — на это рассчитаны `tsconfig.json` и `setup.ps1`.
 - `Vencord\src\userplugins\floatingChats` — **junction** (`mklink /J`, админ не нужен) → `floating-chats\src`.
 - esbuild резолвит junction в реальный путь, поэтому алиасы `@utils`, `@webpack` и т.п. берутся из
   `floating-chats\tsconfig.json`, который делает `extends: "../Vencord/tsconfig.json"`. Не удалять.

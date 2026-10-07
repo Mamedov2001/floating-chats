@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 :root {
     --tile: #1e1f22;
     --accent: #5865f2;

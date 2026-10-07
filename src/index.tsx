@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";

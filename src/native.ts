@@ -1,3 +1,9 @@
+/*
+ * FloatingChats — floating Discord chat tiles for Vencord
+ * Copyright (c) 2026 Mamedov2001
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 // Main-процесс Discord. Vencord импортирует этот модуль при старте Discord (даже если плагин выключен)
 // и регистрирует КАЖДЫЙ экспорт как IPC-обработчик — поэтому экспортируем только функции,
 // а окно создаём лишь по вызову initOverlay() из renderer.

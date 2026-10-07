@@ -1,3 +1,7 @@
+# FloatingChats - floating Discord chat tiles for Vencord
+# Copyright (c) 2026 Mamedov2001
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Links the plugin into the sibling Vencord clone (..\Vencord):
 #   Vencord\src\userplugins\floatingChats  -> floating-chats\src        (Vencord builds the plugin from here)
 #   floating-chats\node_modules            -> Vencord\node_modules      (packages like @vencord/discord-types)
