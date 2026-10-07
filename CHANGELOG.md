@@ -2,7 +2,7 @@
 
 ## 1.0.0 — 2026-10-07
 
-First public release.
+First public release. **Windows 10/11 only** — macOS and Linux are not supported.
 
 ### Tiles
 - Always-on-top widget with a tile for each chat that needs your attention: direct messages, group DMs,

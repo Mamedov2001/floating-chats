@@ -8,6 +8,10 @@ and reply without switching to Discord.
 > **Warning.** Client mods are against Discord's Terms of Service. Bans are rare, but the risk is not zero.
 > Use at your own risk.
 
+> **Windows only.** FloatingChats is built and tested on Windows 10/11. macOS and Linux are not supported:
+> the setup script is Windows-only, and the floating windows rely on Windows behavior (always-on-top,
+> click-through, focus). It may partly work elsewhere, but expect issues.
+
 ## Features
 
 - **Tiles** for direct messages, group DMs, server mentions (you, your roles, `@everyone`/`@here`,
@@ -29,7 +33,7 @@ and reply without switching to Discord.
 
 ## Requirements
 
-- Windows 10 or 11 with the Discord desktop app (Stable)
+- **Windows 10 or 11** (macOS and Linux are not supported) with the Discord desktop app (Stable)
 - [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) 22 or newer, and pnpm (`npm i -g pnpm`)
 
 ## Installation
