@@ -38,6 +38,24 @@ and reply without switching to Discord.
 
 ## Installation
 
+### Option 1: ready-made build (no tools needed)
+
+1. Download `FloatingChats-<version>-windows.zip` from [Releases](https://github.com/Mamedov2001/floating-chats/releases)
+   and extract it.
+2. **Quit Discord completely** (right-click the Discord icon in the tray → Quit Discord).
+3. Double-click `install.cmd`. If Windows says "Windows protected your PC", click "More info" → "Run anyway".
+4. Start Discord. FloatingChats is already enabled.
+
+It installs Vencord with FloatingChats built in, using the official
+[Vencord installer](https://github.com/Vencord/Installer). Files go to `%LOCALAPPDATA%\FloatingChats` — keep that
+folder. To update, run the new release's `install.cmd`; if a Discord update removes Vencord, run `install.cmd`
+again. `uninstall.cmd` restores the original Discord.
+
+This build has Vencord's own updater turned off (so it can't replace the build with one without FloatingChats),
+so Vencord updates come with new FloatingChats releases.
+
+### Option 2: build from source
+
 Vencord and this plugin must be cloned **next to each other** in the same folder:
 
 ```powershell
@@ -60,9 +78,9 @@ Then **quit Discord completely** and inject Vencord into it:
 pnpm inject
 ```
 
-Start Discord, open **Settings → Vencord → Plugins**, find **FloatingChats** and turn it on.
+Start Discord. FloatingChats is enabled by default (**Settings → Vencord → Plugins → FloatingChats**).
 
-## Updating
+## Updating (source build)
 
 ```powershell
 cd C:\projects\floating-chats; git pull

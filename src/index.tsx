@@ -169,6 +169,8 @@ export default definePlugin({
     name: "FloatingChats",
     description: "Floating chat tiles on top of all windows: see who messaged you and reply without switching to Discord",
     authors: [{ name: "Zaur", id: 0n }],
+    // Кто поставил плагин, тот хочет его включённым; выключенный вручную останется выключенным.
+    enabledByDefault: true,
     settings,
 
     flux: {

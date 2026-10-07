@@ -25,6 +25,11 @@ First public release. **Windows 10/11 only** — macOS and Linux are not support
 - Opens next to the tiles on the side that has room; closes when you click elsewhere.
 - Open in Discord button jumps to the channel in the main window.
 
+### Install
+- Ready-made build: `FloatingChats-1.0.0-windows.zip` with `install.cmd` / `uninstall.cmd` — no Node.js or
+  building needed. Uses the official Vencord installer; Vencord's own updater is off in this build.
+- Or build from source next to a Vencord clone (`setup.ps1`). The plugin is enabled by default.
+
 ### Reliability
 - If a Discord update breaks the internals the chat window relies on, chats open in the main Discord window
   instead and you get a one-time notification.

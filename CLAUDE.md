@@ -288,6 +288,19 @@ pnpm inject           # один раз: встроить Vencord в Discord (з
 - Логику `chats.ts` можно гонять в Node: бандл через esbuild с заглушкой `@webpack/common` (сторы) и `./settings`.
 - CSS Discord можно скачать для справки: ссылки на `/assets/*.css` есть в `https://discord.com/app`.
 
+### Релиз
+
+- Готовый архив для людей: `powershell -ExecutionPolicy Bypass -File release\build-release.ps1 -Version X.Y.Z` →
+  `release\out\FloatingChats-X.Y.Z-windows.zip` (папка `release/out` не в git). Скрипт собирает Vencord с
+  `--disable-updater` (иначе апдейтер Vencord заменит сборку на официальную без плагина), кладёт нужные файлы
+  `dist` + `install.cmd/ps1`, `uninstall.cmd/ps1`, `README.txt`, `LICENSE`, затем пересобирает обычную dev-сборку.
+- `install.ps1` копирует `dist` в `%LOCALAPPDATA%\FloatingChats`, скачивает официальный `VencordInstallerCli.exe`
+  и запускает его с `VENCORD_USER_DATA_DIR=<эта папка>`, `VENCORD_DEV_INSTALL=1` (так же, как `pnpm inject`).
+  Проверка без изменения Discord: `install.ps1 -DryRun -Target <временная папка>`.
+- Zip собирается поэлементно с `/` в именах: в PowerShell 5.1 `Compress-Archive` и `ZipFile` пишут `dist\file`.
+- Скрипты `.ps1` — только ASCII; `.cmd` — CRLF (`.gitattributes`).
+- Перед релизом: версия в CHANGELOG, тег `vX.Y.Z` на итоговом коммите, архив — к релизу на GitHub.
+
 ---
 
 ## 7. Критерии готовности
